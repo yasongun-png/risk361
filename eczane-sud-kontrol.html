@@ -1,0 +1,2316 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Eczane Reçete SUD Kontrol ve Raporlama Uygulaması</title>
+
+<!-- Harici kütüphaneler: yalnızca OCR / PDF / Word / Excel üretimi için kullanılır.
+     Tüm veriler (reçete, ilaç, kural) tarayıcıda IndexedDB içinde kalır; hiçbir
+     hasta verisi veya reçete görseli dış sunuculara gönderilmez. -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js"></script>
+
+<style>
+:root{
+  --navy:#0f2744; --navy-2:#16324f; --navy-3:#1c3f63;
+  --accent:#2563eb; --accent-2:#1d4ed8;
+  --bg:#f4f6f9; --card:#ffffff; --border:#e2e8f0; --text:#1e293b; --muted:#64748b;
+  --ok:#15803d; --ok-bg:#dcfce7; --ok-bd:#86efac;
+  --warn:#a16207; --warn-bg:#fef9c3; --warn-bd:#fde047;
+  --bad:#b91c1c; --bad-bg:#fee2e2; --bad-bd:#fca5a5;
+  --none:#475569; --none-bg:#e2e8f0; --none-bd:#cbd5e1;
+  --radius:10px;
+  --sidebar-w:250px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;}
+body{
+  font-family:"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--text); font-size:14px; line-height:1.5;
+}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px;}
+
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;font-size:14px;}
+
+/* ---------- layout ---------- */
+#app{display:flex;min-height:100vh;}
+#sidebar{
+  width:var(--sidebar-w); flex:0 0 var(--sidebar-w); background:linear-gradient(180deg,var(--navy),var(--navy-2));
+  color:#e2e8f0; display:flex; flex-direction:column; position:fixed; top:0; bottom:0; left:0; z-index:40;
+  transition:transform .2s ease;
+}
+#sidebar .brand{padding:20px 18px 14px; border-bottom:1px solid rgba(255,255,255,.1);}
+#sidebar .brand h1{font-size:15px;margin:0 0 2px;color:#fff;font-weight:700;}
+#sidebar .brand span{font-size:11px;color:#93c5fd;}
+#nav{flex:1;overflow-y:auto;padding:10px 0;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:11px 18px;color:#cbd5e1;text-decoration:none;
+  font-size:13.5px;cursor:pointer;border-left:3px solid transparent;white-space:nowrap;
+}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#fff;}
+.nav-item.active{background:rgba(37,99,235,.25);color:#fff;border-left-color:var(--accent);font-weight:600;}
+.nav-item .ic{font-size:16px;width:20px;text-align:center;}
+.nav-badge{margin-left:auto;background:var(--bad);color:#fff;border-radius:10px;font-size:10px;padding:1px 7px;font-weight:700;}
+#sidebar .foot{padding:12px 18px;font-size:10.5px;color:#8ba3c7;border-top:1px solid rgba(255,255,255,.1);}
+
+#main{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-width:0;}
+#topbar{
+  height:58px;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;
+  padding:0 20px;gap:14px;position:sticky;top:0;z-index:30;
+}
+#menuToggle{display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:16px;}
+#topbar h2{font-size:16px;margin:0;font-weight:700;color:var(--navy);}
+#topbar .disclaimer{margin-left:auto;font-size:11px;color:var(--muted);max-width:440px;text-align:right;}
+#content{padding:22px;flex:1;}
+
+.overlay-bg{display:none;position:fixed;inset:0;background:rgba(15,23,42,.4);z-index:39;}
+.overlay-bg.show{display:block;}
+
+/* ---------- generic components ---------- */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px;}
+.card h3{margin:0 0 12px;font-size:14.5px;color:var(--navy);font-weight:700;}
+.grid{display:grid;gap:14px;}
+.grid.cols-4{grid-template-columns:repeat(4,1fr);}
+.grid.cols-3{grid-template-columns:repeat(3,1fr);}
+.grid.cols-2{grid-template-columns:repeat(2,1fr);}
+@media(max-width:1000px){.grid.cols-4{grid-template-columns:repeat(2,1fr);}.grid.cols-3{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:640px){.grid.cols-4,.grid.cols-3,.grid.cols-2{grid-template-columns:1fr;}}
+
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative;overflow:hidden;}
+.stat .n{font-size:26px;font-weight:800;color:var(--navy);}
+.stat .l{font-size:12px;color:var(--muted);margin-top:2px;}
+.stat.accent-ok{border-left:4px solid var(--ok);}
+.stat.accent-warn{border-left:4px solid var(--warn);}
+.stat.accent-bad{border-left:4px solid var(--bad);}
+.stat.accent-blue{border-left:4px solid var(--accent);}
+
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);background:#fff;color:var(--text);
+  padding:9px 14px;border-radius:8px;font-size:13px;font-weight:600;}
+.btn:hover{background:#f1f5f9;}
+.btn.primary{background:var(--accent);border-color:var(--accent-2);color:#fff;}
+.btn.primary:hover{background:var(--accent-2);}
+.btn.danger{background:#fff;border-color:var(--bad-bd);color:var(--bad);}
+.btn.danger:hover{background:var(--bad-bg);}
+.btn.ghost{background:transparent;border-color:transparent;}
+.btn.sm{padding:5px 10px;font-size:12px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;border:1px solid;}
+.badge.ok{color:var(--ok);background:var(--ok-bg);border-color:var(--ok-bd);}
+.badge.warn{color:var(--warn);background:var(--warn-bg);border-color:var(--warn-bd);}
+.badge.bad{color:var(--bad);background:var(--bad-bg);border-color:var(--bad-bd);}
+.badge.none{color:var(--none);background:var(--none-bg);border-color:var(--none-bd);}
+.badge.demo{color:#7c3aed;background:#ede9fe;border-color:#c4b5fd;}
+.badge.manual{color:#0369a1;background:#e0f2fe;border-color:#7dd3fc;}
+.badge.info{color:#334155;background:#f1f5f9;border-color:#cbd5e1;}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+table th{text-align:left;background:#f8fafc;color:var(--navy);font-weight:700;padding:9px 10px;border-bottom:2px solid var(--border);white-space:nowrap;}
+table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+table tr:hover td{background:#f8fafc;}
+.table-wrap{overflow-x:auto;}
+
+label.field{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:4px;}
+input[type=text],input[type=date],input[type=number],select,textarea{
+  width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);
+}
+input:focus,select:focus,textarea:focus{outline:2px solid #bfdbfe;border-color:var(--accent);}
+.formrow{margin-bottom:12px;}
+.inline-edited{border-color:#7dd3fc!important;background:#f0f9ff;}
+
+.banner{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;border:1px solid;display:flex;gap:10px;align-items:flex-start;}
+.banner.warn{background:var(--warn-bg);border-color:var(--warn-bd);color:#78350f;}
+.banner.info{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a;}
+.banner.bad{background:var(--bad-bg);border-color:var(--bad-bd);color:#7f1d1d;}
+.banner .x{margin-left:auto;cursor:pointer;font-weight:700;}
+
+.toast-wrap{position:fixed;bottom:18px;right:18px;z-index:200;display:flex;flex-direction:column;gap:8px;}
+.toast{background:#0f2744;color:#fff;padding:11px 16px;border-radius:8px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:340px;animation:in .2s ease;}
+.toast.err{background:#7f1d1d;}
+.toast.ok{background:#14532d;}
+@keyframes in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+.modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.5);padding:20px;}
+.modal.show{display:flex;}
+.modal .box{background:#fff;border-radius:12px;max-width:640px;width:100%;max-height:88vh;overflow:auto;padding:22px;}
+.modal .box h3{margin-top:0;}
+
+.step-bar{display:flex;gap:6px;margin-bottom:18px;}
+.step-bar .s{flex:1;text-align:center;padding:9px 4px;background:#e2e8f0;color:#64748b;border-radius:7px;font-size:12px;font-weight:700;}
+.step-bar .s.active{background:var(--accent);color:#fff;}
+.step-bar .s.done{background:var(--ok);color:#fff;}
+
+.dropzone{border:2px dashed #94a3b8;border-radius:12px;padding:46px 20px;text-align:center;color:var(--muted);background:#f8fafc;cursor:pointer;transition:.15s;}
+.dropzone.drag{border-color:var(--accent);background:#eff6ff;color:var(--accent-2);}
+.dropzone .big{font-size:40px;margin-bottom:8px;}
+
+.editor-layout{display:flex;gap:16px;flex-wrap:wrap;}
+.editor-canvas-wrap{flex:1 1 480px;min-width:320px;border:1px solid var(--border);border-radius:10px;background:#111827;overflow:auto;max-height:70vh;position:relative;text-align:center;padding:10px;}
+.editor-canvas-wrap canvas{max-width:100%;background:#fff;}
+.editor-tools{flex:0 0 240px;display:flex;flex-direction:column;gap:8px;}
+.editor-tools .grp{border:1px solid var(--border);border-radius:8px;padding:10px;}
+.editor-tools .grp h4{margin:0 0 8px;font-size:12px;color:var(--navy);text-transform:uppercase;letter-spacing:.03em;}
+.editor-tools .row{display:flex;gap:6px;flex-wrap:wrap;}
+
+#cropOverlay{position:absolute;border:2px dashed #fbbf24;background:rgba(251,191,36,.15);display:none;}
+
+.med-card{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:#fff;}
+.med-card .mhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;flex-wrap:wrap;}
+.med-card .mhead .name{font-weight:700;color:var(--navy);font-size:14.5px;}
+.checklist{list-style:none;margin:8px 0 0;padding:0;font-size:12.5px;}
+.checklist li{padding:4px 0;display:flex;gap:8px;align-items:flex-start;border-top:1px dashed var(--border);}
+.checklist li:first-child{border-top:none;}
+.checklist .ic{width:16px;flex:0 0 16px;text-align:center;}
+
+.progress-bar{height:8px;background:#e2e8f0;border-radius:5px;overflow:hidden;margin:8px 0;}
+.progress-bar > div{height:100%;background:var(--accent);transition:width .2s;}
+
+.chip{display:inline-block;font-size:11px;padding:3px 8px;border-radius:20px;background:#f1f5f9;color:#475569;margin:2px 3px 2px 0;border:1px solid var(--border);}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:14px;flex-wrap:wrap;}
+.tab{padding:9px 14px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;}
+.tab.active{color:var(--accent-2);border-color:var(--accent);}
+
+.mask-toggle{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+.small{font-size:12px;color:var(--muted);}
+.hr{border:none;border-top:1px solid var(--border);margin:14px 0;}
+.flex{display:flex;gap:10px;align-items:center;}
+.flex.wrap{flex-wrap:wrap;}
+.spacer{flex:1;}
+.right{text-align:right;}
+.center{text-align:center;}
+a.link{color:var(--accent-2);text-decoration:none;cursor:pointer;font-weight:600;}
+a.link:hover{text-decoration:underline;}
+
+.print-report{background:#fff;padding:26px;max-width:800px;margin:0 auto;border:1px solid var(--border);border-radius:10px;font-size:13px;}
+.print-report h1{font-size:18px;color:var(--navy);margin:0 0 2px;}
+.print-report h2{font-size:14px;color:var(--navy);border-bottom:2px solid var(--navy);padding-bottom:4px;margin:22px 0 10px;}
+.print-report table{margin-bottom:10px;}
+.pr-head{display:flex;justify-content:space-between;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:14px;}
+.pr-head .meta{text-align:right;font-size:12px;color:var(--muted);}
+
+@media(max-width:900px){
+  #sidebar{transform:translateX(-100%);}
+  #sidebar.open{transform:translateX(0);}
+  #main{margin-left:0;}
+  #menuToggle{display:inline-block;}
+  #topbar .disclaimer{display:none;}
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <h1>Eczane SUD Kontrol</h1>
+      <span>Reçete Kontrol &amp; Raporlama · Yerel</span>
+    </div>
+    <nav id="nav"></nav>
+    <div class="foot">Yalnızca yardımcı kontrol aracıdır.<br>Nihai karar eczacı/hekim sorumluluğundadır.</div>
+  </aside>
+
+  <div id="main">
+    <div id="topbar">
+      <button id="menuToggle">☰</button>
+      <h2 id="pageTitle">Dashboard</h2>
+      <div class="disclaimer">Bu sistem yalnızca tanımlanmış SUD kurallarına göre otomatik ön kontrol yapar; tıbbi karar veya mevzuat yorumu üretmez.</div>
+    </div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<div class="overlay-bg" id="overlayBg"></div>
+<div class="toast-wrap" id="toastWrap"></div>
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+
+<script>
+/* =========================================================================
+   0. SABİTLER / YARDIMCI FONKSİYONLAR
+   ========================================================================= */
+const NAV_ITEMS = [
+  {id:'dashboard', ic:'🏠', label:'Dashboard'},
+  {id:'upload',    ic:'📷', label:'Reçete Yükle'},
+  {id:'control',   ic:'🔍', label:'Reçete Kontrol'},
+  {id:'meds',      ic:'💊', label:'İlaç Veritabanı'},
+  {id:'rules',     ic:'📋', label:'SUD Kuralları'},
+  {id:'violations',ic:'⚠️', label:'Uygunsuzluklar'},
+  {id:'reports',   ic:'📊', label:'Raporlar'},
+  {id:'archive',   ic:'🗂️', label:'Reçete Arşivi'},
+  {id:'settings',  ic:'⚙️', label:'Ayarlar'},
+  {id:'backup',    ic:'💾', label:'Yedekleme'},
+];
+
+const STATUS = {
+  OK:   {key:'OK',   label:'UYGUN',            icon:'🟢', cls:'ok'},
+  WARN: {key:'WARN', label:'UYARI',            icon:'🟡', cls:'warn'},
+  BAD:  {key:'BAD',  label:'UYGUNSUZ',         icon:'🔴', cls:'bad'},
+  NA:   {key:'NA',   label:'KONTROL EDİLEMEDİ',icon:'⚪', cls:'none'},
+};
+// UYGUNSUZ > UYARI > KONTROL EDİLEMEDİ > UYGUN (en kötü durum kazanır)
+const STATUS_PRIORITY = ['BAD','WARN','NA','OK'];
+
+function uuid(){
+  if(crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+    const r=Math.random()*16|0, v=c=='x'?r:(r&0x3|0x8); return v.toString(16);
+  });
+}
+function nowIso(){return new Date().toISOString();}
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d = typeof iso==='string' ? new Date(iso) : iso;
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('tr-TR');
+}
+function fmtDateTime(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('tr-TR')+' '+d.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+}
+function escapeHtml(s){
+  return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function normTr(s){
+  if(!s) return '';
+  return String(s).toLocaleLowerCase('tr-TR')
+    .replace(/ı/g,'i').replace(/İ/g,'i').replace(/ğ/g,'g').replace(/ü/g,'u')
+    .replace(/ş/g,'s').replace(/ö/g,'o').replace(/ç/g,'c')
+    .replace(/[^a-z0-9]+/g,' ').trim();
+}
+function maskName(v){
+  if(!v) return '';
+  return v.split(' ').map(p=> p.length<=1 ? p : p[0]+'*'.repeat(p.length-1)).join(' ');
+}
+function maskTckn(v){
+  if(!v) return '';
+  const s = String(v);
+  if(s.length<5) return '*'.repeat(s.length);
+  return s.slice(0,3)+'*'.repeat(s.length-5)+s.slice(-2);
+}
+function toast(msg,type){
+  const wrap = document.getElementById('toastWrap');
+  const el = document.createElement('div');
+  el.className = 'toast'+(type?(' '+type):'');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .3s';setTimeout(()=>el.remove(),300);}, 3600);
+}
+function openModal(html){
+  document.getElementById('modalBox').innerHTML = html;
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal(){document.getElementById('modal').classList.remove('show');}
+function confirmDialog(msg, onYes, opts){
+  opts = opts||{};
+  openModal(`
+    <h3>${escapeHtml(opts.title||'Onay')}</h3>
+    <p>${escapeHtml(msg)}</p>
+    <div class="flex right"><button class="btn" onclick="closeModal()">Vazgeç</button>
+    <button class="btn ${opts.danger?'danger':'primary'}" id="confirmYesBtn">${escapeHtml(opts.yesLabel||'Onayla')}</button></div>
+  `);
+  document.getElementById('confirmYesBtn').onclick = ()=>{closeModal(); onYes();};
+}
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+function blobToDataUrl(blob){
+  return new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=>res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(blob);
+  });
+}
+function dataUrlToBlob(dataUrl){
+  return fetch(dataUrl).then(r=>r.blob());
+}
+// Belirsiz OCR karakter/ifade kalıpları (0/O, 1/I, 5/S, mg/mcg, 1x1/1x2, 10/100 vb.)
+const AMBIGUOUS_PATTERNS = [
+  {re:/\b[0O]{1}\d|\d[0O]\b/i, label:'0 / O karışıklığı olabilir'},
+  {re:/\b[1I]\d|\d[1I]\b/i, label:'1 / I karışıklığı olabilir'},
+  {re:/\b[5S]\d|\d[5S]\b/i, label:'5 / S karışıklığı olabilir'},
+  {re:/mcg|mg/i, label:'mg / mcg karışıklığı olabilir'},
+  {re:/\d\s*[xX]\s*\d/, label:'kullanım sıklığı (ör. 1x1 / 1x2) karışıklığı olabilir'},
+  {re:/\b10\b|\b100\b/, label:'10 / 100 karışıklığı olabilir'},
+];
+function findAmbiguities(text){
+  if(!text) return [];
+  const hits = [];
+  AMBIGUOUS_PATTERNS.forEach(p=>{ if(p.re.test(text)) hits.push(p.label); });
+  return hits;
+}
+
+/* =========================================================================
+   1. INDEXEDDB KATMANI
+   ========================================================================= */
+const DB_NAME='eczane_sud_db', DB_VERSION=1;
+const STORES=['prescriptions','images','medications','sudRules','settings'];
+let _dbp = null;
+function openDb(){
+  if(_dbp) return _dbp;
+  _dbp = new Promise((resolve,reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e)=>{
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains('prescriptions')) db.createObjectStore('prescriptions',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('images')) db.createObjectStore('images',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('medications')) db.createObjectStore('medications',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('sudRules')) db.createObjectStore('sudRules',{keyPath:'id'});
+      if(!db.objectStoreNames.contains('settings')) db.createObjectStore('settings',{keyPath:'key'});
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+  return _dbp;
+}
+async function dbTx(store, mode){
+  const db = await openDb();
+  return db.transaction(store, mode).objectStore(store);
+}
+async function dbPut(store, obj){
+  const db = await openDb();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readwrite');
+    tx.objectStore(store).put(obj);
+    tx.oncomplete = ()=>res(obj);
+    tx.onerror = ()=>rej(tx.error);
+  });
+}
+async function dbGet(store, key){
+  const os = await dbTx(store,'readonly');
+  return new Promise((res,rej)=>{
+    const r = os.get(key);
+    r.onsuccess = ()=>res(r.result||null);
+    r.onerror = ()=>rej(r.error);
+  });
+}
+async function dbGetAll(store){
+  const os = await dbTx(store,'readonly');
+  return new Promise((res,rej)=>{
+    const r = os.getAll();
+    r.onsuccess = ()=>res(r.result||[]);
+    r.onerror = ()=>rej(r.error);
+  });
+}
+async function dbDelete(store, key){
+  const db = await openDb();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = ()=>res();
+    tx.onerror = ()=>rej(tx.error);
+  });
+}
+async function dbClear(store){
+  const db = await openDb();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction(store,'readwrite');
+    tx.objectStore(store).clear();
+    tx.oncomplete = ()=>res();
+    tx.onerror = ()=>rej(tx.error);
+  });
+}
+async function getSettings(){
+  const s = await dbGet('settings','app');
+  return s ? s.value : defaultSettings();
+}
+async function saveSettings(v){
+  await dbPut('settings',{key:'app', value:v});
+}
+function defaultSettings(){
+  return {
+    kurumAdi:'', kontrolEden:'', ocrDili:'tur',
+    varsayilanMaskeleme:false,
+    sudRulesValidated:false, sudRulesValidatedAt:null, sudRulesValidatedNote:'',
+    sudRulesChangedSinceValidation:false,
+  };
+}
+
+/* =========================================================================
+   2. DEMO VERİ TOHUMLAMA (açıkça DEMO VERİ olarak işaretli, gerçek mevzuat DEĞİL)
+   ========================================================================= */
+async function seedDemoDataIfEmpty(){
+  const meds = await dbGetAll('medications');
+  if(meds.length===0){
+    const demoMeds = [
+      {id:uuid(), ilacAdi:'AMOKSİLİN 1000 MG 14 TB (demo)', etkenMadde:'Amoksisilin', barkod:'8699000000011',
+       atcKodu:'J01CA04', farmasotikForm:'Tablet', doz:'1000 mg', ambalaj:'14 tablet', birim:'mg',
+       uretici:'Demo İlaç A.Ş.', maksGunlukDoz:3000, minKullanimSuresi:5, maksKullanimSuresi:14,
+       ozelKontrol:'', isDemo:true},
+      {id:uuid(), ilacAdi:'PARASETAMOL 500 MG 20 TB (demo)', etkenMadde:'Parasetamol', barkod:'8699000000028',
+       atcKodu:'N02BE01', farmasotikForm:'Tablet', doz:'500 mg', ambalaj:'20 tablet', birim:'mg',
+       uretici:'Demo İlaç A.Ş.', maksGunlukDoz:4000, minKullanimSuresi:1, maksKullanimSuresi:10,
+       ozelKontrol:'', isDemo:true},
+      {id:uuid(), ilacAdi:'DEMOSTATİN 20 MG 28 TB (demo)', etkenMadde:'Demostatin', barkod:'8699000000035',
+       atcKodu:'C10AA00', farmasotikForm:'Tablet', doz:'20 mg', ambalaj:'28 tablet', birim:'mg',
+       uretici:'Demo İlaç A.Ş.', maksGunlukDoz:40, minKullanimSuresi:30, maksKullanimSuresi:90,
+       ozelKontrol:'Rapor gereklidir (demo şart)', isDemo:true},
+      {id:uuid(), ilacAdi:'DEMOPRAZOL 40 MG 28 KAPSÜL (demo)', etkenMadde:'Demoprazol', barkod:'8699000000042',
+       atcKodu:'A02BC00', farmasotikForm:'Kapsül', doz:'40 mg', ambalaj:'28 kapsül', birim:'mg',
+       uretici:'Demo İlaç A.Ş.', maksGunlukDoz:80, minKullanimSuresi:7, maksKullanimSuresi:56,
+       ozelKontrol:'', isDemo:true},
+    ];
+    for(const m of demoMeds) await dbPut('medications', m);
+  }
+  const rules = await dbGetAll('sudRules');
+  if(rules.length===0){
+    const g1=uuid(), g2=uuid(), g3=uuid(), g4=uuid();
+    const demoRules = [
+      {id:uuid(), groupId:g1, version:1, kuralAdi:'Amoksisilin Kutu/Süre Sınırı (demo)',
+       aciklama:'Örnek amaçlı demo kural: kutu adedi ve kullanım süresi sınırlarını gösterir.',
+       ilacAdi:'AMOKSİLİN 1000 MG 14 TB (demo)', etkenMadde:'Amoksisilin', atcKodu:'J01CA04',
+       kontrolParametresi:'kutuSayisi', minDeger:'', maxDeger:'',
+       izinVerilenKutuSayisi:2, izinVerilenSureMinGun:5, izinVerilenSureMaxGun:14, izinVerilenGunlukDoz:3000,
+       ozelSart:'', uyariSeviyesi:'kritik', kaynak:'DEMO VERİ - gerçek mevzuat değildir',
+       gecerlilikBaslangic:'2020-01-01', gecerlilikBitis:'', aktif:true, isDemo:true,
+       createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uuid(), groupId:g2, version:1, kuralAdi:'Parasetamol Günlük Doz Sınırı (demo)',
+       aciklama:'Örnek amaçlı demo kural: günlük doz üst sınırını gösterir.',
+       ilacAdi:'PARASETAMOL 500 MG 20 TB (demo)', etkenMadde:'Parasetamol', atcKodu:'N02BE01',
+       kontrolParametresi:'gunlukDoz', minDeger:'', maxDeger:'',
+       izinVerilenKutuSayisi:3, izinVerilenSureMinGun:1, izinVerilenSureMaxGun:10, izinVerilenGunlukDoz:4000,
+       ozelSart:'', uyariSeviyesi:'uyari', kaynak:'DEMO VERİ - gerçek mevzuat değildir',
+       gecerlilikBaslangic:'2020-01-01', gecerlilikBitis:'', aktif:true, isDemo:true,
+       createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uuid(), groupId:g3, version:1, kuralAdi:'Demostatin Rapor Şartı (demo)',
+       aciklama:'Örnek amaçlı demo kural: özel şart / rapor gerekliliğini gösterir.',
+       ilacAdi:'DEMOSTATİN 20 MG 28 TB (demo)', etkenMadde:'Demostatin', atcKodu:'C10AA00',
+       kontrolParametresi:'kullanimSuresi', minDeger:'', maxDeger:'',
+       izinVerilenKutuSayisi:1, izinVerilenSureMinGun:30, izinVerilenSureMaxGun:90, izinVerilenGunlukDoz:40,
+       ozelSart:'Uzman hekim raporu gereklidir (demo)', uyariSeviyesi:'kritik', kaynak:'DEMO VERİ - gerçek mevzuat değildir',
+       gecerlilikBaslangic:'2020-01-01', gecerlilikBitis:'', aktif:true, isDemo:true,
+       createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uuid(), groupId:g4, version:1, kuralAdi:'Demoprazol Süre Sınırı (demo)',
+       aciklama:'Örnek amaçlı demo kural: minimum/maksimum kullanım süresini gösterir.',
+       ilacAdi:'DEMOPRAZOL 40 MG 28 KAPSÜL (demo)', etkenMadde:'Demoprazol', atcKodu:'A02BC00',
+       kontrolParametresi:'kullanimSuresi', minDeger:'', maxDeger:'',
+       izinVerilenKutuSayisi:2, izinVerilenSureMinGun:7, izinVerilenSureMaxGun:56, izinVerilenGunlukDoz:80,
+       ozelSart:'', uyariSeviyesi:'uyari', kaynak:'DEMO VERİ - gerçek mevzuat değildir',
+       gecerlilikBaslangic:'2020-01-01', gecerlilikBitis:'', aktif:true, isDemo:true,
+       createdAt:nowIso(), updatedAt:nowIso()},
+    ];
+    for(const r of demoRules) await dbPut('sudRules', r);
+  }
+  const s = await getSettings();
+  if(!s.__seeded){ s.__seeded = true; await saveSettings(s); }
+}
+
+/* =========================================================================
+   3. GENEL UYGULAMA DURUMU (STATE) & YÖNLENDİRME
+   ========================================================================= */
+const App = {
+  view:'dashboard',
+  settings: null,
+  draft: null,          // aktif reçete kontrol taslağı (upload/control sihirbazı)
+  archiveFilter: {},
+  medications: [],
+  sudRules: [],
+};
+
+function newDraft(){
+  return {
+    id: uuid(),
+    step: 1, // 1: yükle/düzenle, 2: OCR, 3: doğrulama, 4: kontrol sonucu
+    imageBlob:null, imageDataUrl:null, imageMeta:{rotation:0},
+    ocrRawText:'', ocrConfidence:null, ocrWords:[],
+    ambiguousConfirmed:false,
+    manualFields:new Set(), // hangi alanlar elle düzeltildi
+    hasta:{ad:'',soyad:'',tckn:'',dogumTarihi:'',cinsiyet:''},
+    recete:{no:'',tarih:'',tur:'',doktorAdi:'',doktorBranş:'',kurum:'',aciklama:''},
+    ilaclar:[], // {id, ilacAdi, etkenMadde, barkod, ambalajMiktari, doz, kullanimSikligi, kullanimSuresiGun, gunlukDoz, kutuAdedi, farmasotikForm, aciklama}
+    sonuclar:null, // control() sonrası
+    controlledAt:null,
+    savedToArchive:false,
+  };
+}
+
+async function boot(){
+  App.settings = await getSettings();
+  await seedDemoDataIfEmpty();
+  App.settings = await getSettings();
+  App.medications = await dbGetAll('medications');
+  App.sudRules = await dbGetAll('sudRules');
+  renderSidebar();
+  window.addEventListener('hashchange', route);
+  route();
+  document.getElementById('menuToggle').onclick = ()=>document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlayBg').onclick = ()=>{document.getElementById('sidebar').classList.remove('open');};
+}
+
+function renderSidebar(){
+  const nav = document.getElementById('nav');
+  nav.innerHTML='';
+  NAV_ITEMS.forEach(it=>{
+    const a = document.createElement('a');
+    a.className='nav-item'+(App.view===it.id?' active':'');
+    a.href = '#'+it.id;
+    a.innerHTML = `<span class="ic">${it.ic}</span><span>${it.label}</span>`;
+    nav.appendChild(a);
+  });
+}
+
+async function route(){
+  let hash = location.hash.replace('#','') || 'dashboard';
+  const known = NAV_ITEMS.map(n=>n.id);
+  if(!known.includes(hash)) hash='dashboard';
+  App.view = hash;
+  document.getElementById('sidebar').classList.remove('open');
+  renderSidebar();
+  const titles = Object.fromEntries(NAV_ITEMS.map(i=>[i.id,i.label]));
+  document.getElementById('pageTitle').textContent = titles[hash];
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="small">Yükleniyor…</div>';
+  try{
+    switch(hash){
+      case 'dashboard': await viewDashboard(content); break;
+      case 'upload': await viewWizard(content); break;
+      case 'control': await viewWizard(content); break;
+      case 'meds': await viewMeds(content); break;
+      case 'rules': await viewRules(content); break;
+      case 'violations': await viewViolations(content); break;
+      case 'reports': await viewReports(content); break;
+      case 'archive': await viewArchive(content); break;
+      case 'settings': await viewSettings(content); break;
+      case 'backup': await viewBackup(content); break;
+    }
+  }catch(err){
+    console.error(err);
+    content.innerHTML = `<div class="banner bad">Görünüm yüklenirken hata oluştu: ${escapeHtml(err.message||err)}</div>`;
+  }
+}
+function rulesBanner(){
+  if(App.settings.sudRulesValidated && !App.settings.sudRulesChangedSinceValidation) return '';
+  return `<div class="banner warn">⚠️ <div><b>SUD kural seti henüz kullanıcı tarafından doğrulanmadı.</b>
+    Kontrol sonuçları yalnızca demo/test amaçlıdır ve gerçek reçete değerlendirmesi için kullanılmamalıdır.
+    <a class="link" href="#rules">SUD Kuralları sayfasından doğrulayın →</a></div></div>`;
+}
+
+/* =========================================================================
+   4. DASHBOARD
+   ========================================================================= */
+async function viewDashboard(content){
+  const prescriptions = await dbGetAll('prescriptions');
+  const now = new Date();
+  const thisMonth = prescriptions.filter(p=>{
+    const d = new Date(p.controlledAt||p.createdAt);
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth();
+  });
+  let uygun=0, uygunsuz=0, kontrolGerekli=0, uyari=0, uygunsuzlukSayisi=0;
+  const medWarnCount={}, ruleBadCount={};
+  prescriptions.forEach(p=>{
+    if(!p.sonuclar) return;
+    const g = p.sonuclar.genelSonuc;
+    if(g==='OK') uygun++; else kontrolGerekli++;
+    (p.sonuclar.ilacSonuclari||[]).forEach(r=>{
+      if(r.status==='WARN'){ uyari++; medWarnCount[r.ilacAdi]=(medWarnCount[r.ilacAdi]||0)+1; }
+      if(r.status==='BAD'){
+        uygunsuzlukSayisi++;
+        (r.checks||[]).filter(c=>c.status==='BAD').forEach(c=>{
+          ruleBadCount[c.kuralAdi||'—']=(ruleBadCount[c.kuralAdi||'—']||0)+1;
+        });
+      }
+    });
+  });
+  const topMeds = Object.entries(medWarnCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const topRules = Object.entries(ruleBadCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  content.innerHTML = `
+    ${rulesBanner()}
+    <div class="grid cols-4">
+      <div class="stat accent-blue"><div class="n">${prescriptions.length}</div><div class="l">Toplam Reçete</div></div>
+      <div class="stat accent-blue"><div class="n">${thisMonth.length}</div><div class="l">Bu Ay Kontrol Edilen</div></div>
+      <div class="stat accent-ok"><div class="n">${uygun}</div><div class="l">Uygun Reçete</div></div>
+      <div class="stat accent-bad"><div class="n">${kontrolGerekli}</div><div class="l">Kontrol Gerektiren</div></div>
+    </div>
+    <div class="grid cols-2" style="margin-top:14px">
+      <div class="card">
+        <h3>Reçete Durum Dağılımı</h3>
+        <canvas id="statusChart" height="180"></canvas>
+      </div>
+      <div class="card">
+        <h3>Uygunsuzluk Sayısı: <span style="color:var(--bad)">${uygunsuzlukSayisi}</span></h3>
+        <p class="small">Tüm arşivdeki reçetelerde tespit edilen 🔴 UYGUNSUZ ilaç kontrol sayısıdır.</p>
+        <a class="btn danger sm" href="#violations">Uygunsuzlukları Görüntüle →</a>
+      </div>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>En Fazla Uyarı Veren İlaçlar</h3>
+        ${topMeds.length? topMeds.map(([n,c])=>barRow(n,c,Math.max(...topMeds.map(x=>x[1])),'var(--warn)')).join('') : '<p class="small">Henüz veri yok.</p>'}
+      </div>
+      <div class="card">
+        <h3>En Fazla Uygunsuzluk Veren Kurallar</h3>
+        ${topRules.length? topRules.map(([n,c])=>barRow(n,c,Math.max(...topRules.map(x=>x[1])),'var(--bad)')).join('') : '<p class="small">Henüz veri yok.</p>'}
+      </div>
+    </div>
+    <div class="card">
+      <h3>Hızlı İşlemler</h3>
+      <div class="flex wrap">
+        <a class="btn primary" href="#upload">📷 Yeni Reçete Yükle</a>
+        <a class="btn" href="#meds">💊 İlaç Veritabanını Yönet</a>
+        <a class="btn" href="#rules">📋 SUD Kurallarını Yönet</a>
+        <a class="btn" href="#archive">🗂️ Arşivi Görüntüle</a>
+      </div>
+    </div>
+  `;
+  drawStatusChart('statusChart', {OK:uygun, WARN:uyari, BAD:uygunsuzlukSayisi, NA:0});
+}
+function barRow(label,count,max,color){
+  const pct = max? Math.round(count/max*100) : 0;
+  return `<div style="margin-bottom:8px">
+    <div class="flex" style="justify-content:space-between;font-size:12px;margin-bottom:2px">
+      <span>${escapeHtml(label)}</span><b>${count}</b>
+    </div>
+    <div style="background:#e2e8f0;border-radius:5px;height:8px;overflow:hidden">
+      <div style="width:${pct}%;height:100%;background:${color}"></div>
+    </div>
+  </div>`;
+}
+function drawStatusChart(canvasId, counts){
+  const cv = document.getElementById(canvasId);
+  if(!cv) return;
+  const ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio||1;
+  const w = cv.clientWidth||360, h = 180;
+  cv.width = w*dpr; cv.height=h*dpr; ctx.scale(dpr,dpr);
+  const data = [
+    {label:'Uygun', v:counts.OK, color:'#15803d'},
+    {label:'Uyarı', v:counts.WARN, color:'#a16207'},
+    {label:'Uygunsuz', v:counts.BAD, color:'#b91c1c'},
+    {label:'Kontrol Edilemedi', v:counts.NA, color:'#475569'},
+  ];
+  const max = Math.max(1, ...data.map(d=>d.v));
+  const barW = 56, gap = 30, baseY = h-30, top=16;
+  ctx.clearRect(0,0,w,h);
+  ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.fillStyle='#334155';
+  data.forEach((d,i)=>{
+    const x = 30 + i*(barW+gap);
+    const barH = (h-30-top) * (d.v/max);
+    ctx.fillStyle = d.color;
+    ctx.fillRect(x, baseY-barH, barW, Math.max(barH,d.v>0?2:0));
+    ctx.fillStyle = '#334155';
+    ctx.fillText(String(d.v), x+barW/2, baseY-barH-6);
+    ctx.fillText(d.label, x+barW/2, h-10);
+  });
+}
+
+/* =========================================================================
+   5. REÇETE YÜKLEME + OCR + DOĞRULAMA + KONTROL SİHİRBAZI
+   ========================================================================= */
+async function viewWizard(content){
+  if(!App.draft){
+    if(App.view==='control'){
+      content.innerHTML = `
+        <div class="card center">
+          <p>Şu anda aktif bir reçete kontrol işlemi yok.</p>
+          <a class="btn primary" href="#upload">📷 Reçete Yükle</a>
+        </div>`;
+      return;
+    }
+    App.draft = newDraft();
+  }
+  renderWizardStep(content);
+}
+function renderWizardStep(content){
+  const d = App.draft;
+  const steps = ['Yükle & Düzenle','OCR','Doğrulama','Kontrol Sonucu'];
+  content.innerHTML = `
+    ${rulesBanner()}
+    <div class="step-bar">
+      ${steps.map((s,i)=>`<div class="s ${d.step===i+1?'active':(d.step>i+1?'done':'')}">${i+1}. ${s}</div>`).join('')}
+    </div>
+    <div id="wizardBody"></div>
+  `;
+  const body = document.getElementById('wizardBody');
+  if(d.step===1) renderStepUpload(body);
+  else if(d.step===2) renderStepOcr(body);
+  else if(d.step===3) renderStepVerify(body);
+  else renderStepControl(body);
+}
+
+/* ---- STEP 1: Yükleme + görüntü iyileştirme ---- */
+function renderStepUpload(body){
+  const d = App.draft;
+  body.innerHTML = `
+    <div class="card">
+      <h3>Reçete Görselini Yükle</h3>
+      ${d.imageDataUrl? '' : `
+        <div class="dropzone" id="dropzone">
+          <div class="big">📷</div>
+          <div><b>REÇETE YÜKLE</b></div>
+          <div class="small">JPG, JPEG veya PNG dosyasını buraya sürükleyin ya da tıklayın</div>
+          <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,image/jpeg,image/png" style="display:none">
+        </div>
+      `}
+      ${d.imageDataUrl? `
+      <div class="editor-layout">
+        <div class="editor-canvas-wrap" id="canvasWrap">
+          <canvas id="editCanvas"></canvas>
+          <div id="cropOverlay"></div>
+        </div>
+        <div class="editor-tools">
+          <div class="grp">
+            <h4>Döndür / Yakınlaştır</h4>
+            <div class="row">
+              <button class="btn sm" id="rotL">⟲ Sola</button>
+              <button class="btn sm" id="rotR">⟳ Sağa</button>
+              <button class="btn sm" id="zoomIn">🔍+ Yakınlaştır</button>
+              <button class="btn sm" id="zoomOut">🔍- Uzaklaştır</button>
+            </div>
+          </div>
+          <div class="grp">
+            <h4>Görüntü İyileştirme</h4>
+            <div class="row">
+              <button class="btn sm" id="grayBtn">Gri Tonlama</button>
+              <button class="btn sm" id="sharpenBtn">Keskinleştir</button>
+            </div>
+            <label class="field" style="margin-top:8px">Kontrast: <span id="contrastVal">0</span></label>
+            <input type="range" id="contrastRange" min="-50" max="100" value="0">
+          </div>
+          <div class="grp">
+            <h4>Kırpma</h4>
+            <div class="row">
+              <button class="btn sm" id="cropModeBtn">Kırpma Alanı Seç</button>
+              <button class="btn sm" id="cropApplyBtn">Kırpmayı Uygula</button>
+            </div>
+          </div>
+          <div class="grp">
+            <button class="btn sm" id="resetImgBtn" style="width:100%">↺ Sıfırla</button>
+            <button class="btn sm" id="changeImgBtn" style="width:100%;margin-top:6px">🔄 Farklı Görsel Yükle</button>
+          </div>
+          <button class="btn primary" id="toOcrBtn" style="width:100%">OCR'a Geç →</button>
+        </div>
+      </div>
+      ` : ''}
+    </div>
+  `;
+  if(!d.imageDataUrl){
+    const dz = document.getElementById('dropzone');
+    const fi = document.getElementById('fileInput');
+    dz.onclick = ()=>fi.click();
+    dz.addEventListener('dragover', e=>{e.preventDefault(); dz.classList.add('drag');});
+    dz.addEventListener('dragleave', ()=>dz.classList.remove('drag'));
+    dz.addEventListener('drop', e=>{
+      e.preventDefault(); dz.classList.remove('drag');
+      if(e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]);
+    });
+    fi.onchange = ()=>{ if(fi.files[0]) loadImageFile(fi.files[0]); };
+    return;
+  }
+  initEditor();
+}
+async function loadImageFile(file){
+  if(!/image\/(jpeg|png)/.test(file.type)){
+    toast('Yalnızca JPG/JPEG/PNG dosyaları desteklenir.','err'); return;
+  }
+  App.draft.imageBlob = file;
+  App.draft.imageDataUrl = await blobToDataUrl(file);
+  App.draft.imageMeta = {rotation:0, grayscale:false, contrast:0, zoom:1};
+  renderWizardStep(document.getElementById('content'));
+}
+let editorState = null;
+function initEditor(){
+  const d = App.draft;
+  const canvas = document.getElementById('editCanvas');
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = ()=>{
+    editorState = {img, rotation:d.imageMeta.rotation||0, zoom:d.imageMeta.zoom||1,
+      grayscale:d.imageMeta.grayscale||false, contrast:d.imageMeta.contrast||0, crop:null, cropMode:false};
+    drawEditor();
+  };
+  img.src = d.imageDataUrl;
+
+  document.getElementById('rotL').onclick = ()=>{editorState.rotation=(editorState.rotation-90+360)%360; drawEditor();};
+  document.getElementById('rotR').onclick = ()=>{editorState.rotation=(editorState.rotation+90)%360; drawEditor();};
+  document.getElementById('zoomIn').onclick = ()=>{editorState.zoom=Math.min(3,editorState.zoom+0.2); drawEditor();};
+  document.getElementById('zoomOut').onclick = ()=>{editorState.zoom=Math.max(0.3,editorState.zoom-0.2); drawEditor();};
+  document.getElementById('grayBtn').onclick = ()=>{editorState.grayscale=!editorState.grayscale; drawEditor();};
+  document.getElementById('sharpenBtn').onclick = ()=>{applySharpen(canvas,ctx); toast('Keskinleştirme uygulandı.');};
+  document.getElementById('contrastRange').oninput = (e)=>{editorState.contrast=Number(e.target.value); document.getElementById('contrastVal').textContent=e.target.value; drawEditor();};
+  document.getElementById('resetImgBtn').onclick = ()=>{
+    editorState.rotation=0; editorState.zoom=1; editorState.grayscale=false; editorState.contrast=0; editorState.crop=null;
+    document.getElementById('contrastRange').value=0; document.getElementById('contrastVal').textContent='0';
+    drawEditor();
+  };
+  document.getElementById('changeImgBtn').onclick = ()=>{
+    d.imageDataUrl=null; d.imageBlob=null; renderWizardStep(document.getElementById('content'));
+  };
+  document.getElementById('cropModeBtn').onclick = ()=>{
+    editorState.cropMode = !editorState.cropMode;
+    toast(editorState.cropMode? 'Kırpma modu açık: canvas üzerinde alan seçin.' : 'Kırpma modu kapalı.');
+    setupCropHandlers();
+  };
+  document.getElementById('cropApplyBtn').onclick = applyCrop;
+  document.getElementById('toOcrBtn').onclick = async ()=>{
+    // düzenlenmiş canvas'ı taslağa kaydet
+    d.imageMeta = {rotation:editorState.rotation, zoom:editorState.zoom, grayscale:editorState.grayscale, contrast:editorState.contrast};
+    d.editedDataUrl = canvas.toDataURL('image/png');
+    d.step = 2;
+    renderWizardStep(document.getElementById('content'));
+  };
+}
+function drawEditor(){
+  const canvas = document.getElementById('editCanvas');
+  const ctx = canvas.getContext('2d');
+  const {img, rotation, zoom, grayscale, contrast} = editorState;
+  const rad = rotation*Math.PI/180;
+  const swap = rotation%180!==0;
+  const baseW = img.width, baseH = img.height;
+  const outW = (swap?baseH:baseW)*zoom, outH=(swap?baseW:baseH)*zoom;
+  canvas.width = outW; canvas.height = outH;
+  ctx.save();
+  ctx.translate(outW/2, outH/2);
+  ctx.rotate(rad);
+  ctx.scale(zoom,zoom);
+  ctx.drawImage(img, -baseW/2, -baseH/2);
+  ctx.restore();
+  if(grayscale || contrast!==0){
+    const imgData = ctx.getImageData(0,0,outW,outH);
+    const data = imgData.data;
+    const c = (contrast/100)+1;
+    const intercept = 128*(1-c);
+    for(let i=0;i<data.length;i+=4){
+      let r=data[i], g=data[i+1], b=data[i+2];
+      if(grayscale){ const v=0.299*r+0.587*g+0.114*b; r=g=b=v; }
+      r = r*c+intercept; g=g*c+intercept; b=b*c+intercept;
+      data[i]=clamp255(r); data[i+1]=clamp255(g); data[i+2]=clamp255(b);
+    }
+    ctx.putImageData(imgData,0,0);
+  }
+}
+function clamp255(v){return Math.max(0,Math.min(255,v));}
+function applySharpen(canvas, ctx){
+  const w=canvas.width, h=canvas.height;
+  const src = ctx.getImageData(0,0,w,h);
+  const dst = ctx.createImageData(w,h);
+  const kernel = [0,-1,0, -1,5,-1, 0,-1,0];
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const idx = (y*w+x)*4;
+      if(x===0||y===0||x===w-1||y===h-1){
+        for(let k=0;k<4;k++) dst.data[idx+k]=src.data[idx+k];
+        continue;
+      }
+      for(let c=0;c<3;c++){
+        let sum=0, ki=0;
+        for(let ky=-1;ky<=1;ky++) for(let kx=-1;kx<=1;kx++){
+          const sidx = ((y+ky)*w+(x+kx))*4+c;
+          sum += src.data[sidx]*kernel[ki++];
+        }
+        dst.data[idx+c] = clamp255(sum);
+      }
+      dst.data[idx+3]=src.data[idx+3];
+    }
+  }
+  ctx.putImageData(dst,0,0);
+}
+function setupCropHandlers(){
+  const wrap = document.getElementById('canvasWrap');
+  const overlay = document.getElementById('cropOverlay');
+  if(!editorState.cropMode){ overlay.style.display='none'; wrap.onmousedown=null; return; }
+  let startX,startY,dragging=false;
+  wrap.onmousedown = (e)=>{
+    const rect = wrap.getBoundingClientRect();
+    startX = e.clientX-rect.left+wrap.scrollLeft; startY = e.clientY-rect.top+wrap.scrollTop;
+    dragging = true; overlay.style.display='block';
+    overlay.style.left=startX+'px'; overlay.style.top=startY+'px'; overlay.style.width='0px'; overlay.style.height='0px';
+  };
+  wrap.onmousemove = (e)=>{
+    if(!dragging) return;
+    const rect = wrap.getBoundingClientRect();
+    const x = e.clientX-rect.left+wrap.scrollLeft, y = e.clientY-rect.top+wrap.scrollTop;
+    overlay.style.left = Math.min(x,startX)+'px'; overlay.style.top = Math.min(y,startY)+'px';
+    overlay.style.width = Math.abs(x-startX)+'px'; overlay.style.height = Math.abs(y-startY)+'px';
+  };
+  window.addEventListener('mouseup', ()=>{dragging=false;});
+}
+function applyCrop(){
+  const overlay = document.getElementById('cropOverlay');
+  const canvas = document.getElementById('editCanvas');
+  if(overlay.style.display!=='block' || !overlay.style.width || parseFloat(overlay.style.width)<5){
+    toast('Önce "Kırpma Alanı Seç" ile bir alan belirleyin.','err'); return;
+  }
+  const wrap = document.getElementById('canvasWrap');
+  const canvasRect = canvas.getBoundingClientRect();
+  const wrapRect = wrap.getBoundingClientRect();
+  const scaleX = canvas.width / canvas.clientWidth;
+  const scaleY = canvas.height / canvas.clientHeight;
+  const offX = canvasRect.left - wrapRect.left + wrap.scrollLeft;
+  const offY = canvasRect.top - wrapRect.top + wrap.scrollTop;
+  const ox = (parseFloat(overlay.style.left)-offX) * scaleX;
+  const oy = (parseFloat(overlay.style.top)-offY) * scaleY;
+  const ow = parseFloat(overlay.style.width) * scaleX;
+  const oh = parseFloat(overlay.style.height) * scaleY;
+  const ctx = canvas.getContext('2d');
+  const cropped = ctx.getImageData(Math.max(0,ox),Math.max(0,oy),ow,oh);
+  canvas.width = ow; canvas.height = oh;
+  ctx.putImageData(cropped,0,0);
+  // düzenleyici temel görüntüyü de güncelle ki döndürme/yakınlaştırma bundan sonra bu görüntü üzerinden çalışsın
+  const newImg = new Image();
+  newImg.onload = ()=>{ editorState.img=newImg; editorState.rotation=0; editorState.zoom=1; };
+  newImg.src = canvas.toDataURL('image/png');
+  overlay.style.display='none';
+  editorState.cropMode=false;
+  toast('Kırpma uygulandı.');
+}
+
+/* ---- STEP 2: OCR ---- */
+function renderStepOcr(body){
+  const d = App.draft;
+  body.innerHTML = `
+    <div class="card">
+      <h3>OCR ile Reçete Bilgilerini Oku</h3>
+      <div class="flex" style="align-items:flex-start">
+        <img src="${d.editedDataUrl||d.imageDataUrl}" style="max-width:280px;border:1px solid var(--border);border-radius:8px">
+        <div class="spacer">
+          <p class="small">Tesseract.js (Türkçe dil paketi) ile reçete görseli okunacak. Bu işlem cihazınızda, tarayıcı içinde çalışır; görsel hiçbir sunucuya gönderilmez.</p>
+          <div id="ocrStatus" class="small">Hazır.</div>
+          <div class="progress-bar"><div id="ocrProgress" style="width:0%"></div></div>
+          <div class="flex" style="margin-top:10px">
+            <button class="btn" id="backToStep1">← Görsele Dön</button>
+            <button class="btn primary" id="runOcrBtn">OCR'ı Başlat</button>
+          </div>
+          <div id="ocrResultWrap" style="margin-top:14px;display:none">
+            <label class="field">Ham OCR Metni</label>
+            <textarea id="ocrRawTextArea" rows="10"></textarea>
+            <div id="ocrConfidenceBanner"></div>
+            <button class="btn primary" id="toVerifyBtn" style="margin-top:10px">Doğrulama Adımına Geç →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('backToStep1').onclick = ()=>{d.step=1; renderWizardStep(document.getElementById('content'));};
+  document.getElementById('runOcrBtn').onclick = runOcr;
+  if(d.ocrRawText){
+    document.getElementById('ocrResultWrap').style.display='block';
+    document.getElementById('ocrRawTextArea').value = d.ocrRawText;
+    document.getElementById('toVerifyBtn').onclick = ()=>{
+      d.ocrRawText = document.getElementById('ocrRawTextArea').value;
+      const parsed = parseOcrText(d.ocrRawText);
+      applyParsedToDraft(parsed);
+      d.step=3; renderWizardStep(document.getElementById('content'));
+    };
+  }
+}
+async function runOcr(){
+  const d = App.draft;
+  const statusEl = document.getElementById('ocrStatus');
+  const progEl = document.getElementById('ocrProgress');
+  const btn = document.getElementById('runOcrBtn');
+  btn.disabled = true;
+  try{
+    statusEl.textContent = 'OCR motoru başlatılıyor…';
+    const worker = await Tesseract.createWorker('tur', 1, {
+      logger: m=>{
+        if(m.status) statusEl.textContent = m.status+(m.progress? ' ('+Math.round(m.progress*100)+'%)':'');
+        if(typeof m.progress==='number') progEl.style.width = Math.round(m.progress*100)+'%';
+      }
+    });
+    const result = await worker.recognize(d.editedDataUrl||d.imageDataUrl);
+    await worker.terminate();
+    d.ocrRawText = result.data.text || '';
+    d.ocrConfidence = result.data.confidence ?? null;
+    d.ocrWords = (result.data.words||[]).map(w=>({text:w.text, confidence:w.confidence, bbox:w.bbox}));
+    statusEl.textContent = 'OCR tamamlandı. Güven skoru: '+ (d.ocrConfidence!=null? d.ocrConfidence.toFixed(1)+'%':'—');
+    document.getElementById('ocrResultWrap').style.display='block';
+    document.getElementById('ocrRawTextArea').value = d.ocrRawText;
+    const cb = document.getElementById('ocrConfidenceBanner');
+    if(d.ocrConfidence!=null && d.ocrConfidence<70){
+      cb.innerHTML = `<div class="banner warn" style="margin-top:8px">⚠️ OCR güven skoru düşük (${d.ocrConfidence.toFixed(1)}%). Lütfen reçete bilgilerini manuel olarak doğrulayınız.</div>`;
+    } else {
+      cb.innerHTML = '';
+    }
+    document.getElementById('toVerifyBtn').onclick = ()=>{
+      d.ocrRawText = document.getElementById('ocrRawTextArea').value;
+      const parsed = parseOcrText(d.ocrRawText);
+      applyParsedToDraft(parsed);
+      d.step=3; renderWizardStep(document.getElementById('content'));
+    };
+  }catch(err){
+    console.error(err);
+    statusEl.textContent = 'OCR hatası: '+(err.message||err)+' (Türkçe dil paketi ilk kullanımda internetten indirilir; bağlantınızı kontrol edin.)';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/* ---- OCR metin ayrıştırma (heuristik, tahmini alanlar; kural/ilaç bilgisi UYDURMAZ) ---- */
+function parseOcrText(text){
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const out = {hasta:{}, recete:{}, ilaclar:[]};
+  const tcknMatch = text.match(/\b\d{11}\b/);
+  if(tcknMatch) out.hasta.tckn = tcknMatch[0];
+  const dateMatches = text.match(/\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b/g) || [];
+  if(dateMatches[0]) out.recete.tarih = normalizeDateStr(dateMatches[0]);
+  if(dateMatches[1]) out.hasta.dogumTarihi = normalizeDateStr(dateMatches[1]);
+  const receteNoMatch = text.match(/re[cç]ete\s*no\s*[:.\-]?\s*([A-Za-z0-9\-]+)/i);
+  if(receteNoMatch) out.recete.no = receteNoMatch[1];
+  const doktorMatch = text.match(/dr\.?\s*([A-ZÇĞİÖŞÜ][a-zçğıöşü]+\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)/);
+  if(doktorMatch) out.recete.doktorAdi = doktorMatch[1];
+  const kurumMatch = text.match(/(hastane|poliklinik|sağlık\s*merkezi|aile\s*sağlığı)[^\n]*/i);
+  if(kurumMatch) out.recete.kurum = kurumMatch[0].trim();
+
+  // ilaç satırlarını yakala: mg/mcg/ml içeren ve varsa xN kullanım deseni olan satırlar
+  const drugLineRe = /([A-ZÇĞİÖŞÜ][A-Za-zÇĞİÖŞÜçğıöşü0-9\-\/ ]{2,40}?)\s*(\d+[.,]?\d*)\s*(mg|mcg|ml|g)\b/i;
+  const freqRe = /(\d+)\s*[xX]\s*(\d+)/;
+  const boxRe = /(\d+)\s*(kutu|adet|kt)\b/i;
+  lines.forEach(line=>{
+    const dm = line.match(drugLineRe);
+    if(!dm) return;
+    const freqM = line.match(freqRe);
+    const boxM = line.match(boxRe);
+    out.ilaclar.push({
+      ilacAdi: dm[1].trim(),
+      doz: dm[2]+' '+dm[3],
+      kullanimSikligi: freqM? (freqM[1]+'x'+freqM[2]) : '',
+      kutuAdedi: boxM? boxM[1] : '',
+      aciklama: line,
+      rawLine: line,
+    });
+  });
+  return out;
+}
+function normalizeDateStr(s){
+  const m = s.match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})/);
+  if(!m) return '';
+  let [_,dd,mm,yy] = m;
+  if(yy.length===2) yy = '20'+yy;
+  return `${yy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+}
+function applyParsedToDraft(parsed){
+  const d = App.draft;
+  d.hasta = {...d.hasta, ...parsed.hasta};
+  d.recete = {...d.recete, ...parsed.recete};
+  if(parsed.ilaclar.length){
+    d.ilaclar = parsed.ilaclar.map(p=>({
+      id:uuid(), ilacAdi:p.ilacAdi||'', etkenMadde:'', barkod:'', ambalajMiktari:'',
+      doz:p.doz||'', kullanimSikligi:p.kullanimSikligi||'', kullanimSuresiGun:'',
+      gunlukDoz:'', kutuAdedi:p.kutuAdedi||'', farmasotikForm:'', aciklama:p.aciklama||'',
+      rawLine:p.rawLine||'',
+    }));
+  }
+  if(d.ilaclar.length===0){
+    d.ilaclar.push(blankIlacRow());
+  }
+}
+function blankIlacRow(){
+  return {id:uuid(), ilacAdi:'', etkenMadde:'', barkod:'', ambalajMiktari:'', doz:'', kullanimSikligi:'',
+    kullanimSuresiGun:'', gunlukDoz:'', kutuAdedi:'', farmasotikForm:'', aciklama:'', rawLine:''};
+}
+
+/* ---- STEP 3: OCR sonuçlarını doğrulama ekranı ---- */
+function renderStepVerify(body){
+  const d = App.draft;
+  const ambig = findAmbiguities(d.ocrRawText);
+  body.innerHTML = `
+    <div class="banner info">🔎 <div><b>OCR SONUÇLARINI KONTROL ET</b> — Aşağıdaki bilgiler otomatik olarak kabul EDİLMEMİŞTİR.
+    Lütfen her alanı reçete görseliyle karşılaştırıp gerekirse düzeltin. Elle değiştirilen alanlar "MANUEL DÜZELTİLDİ" olarak işaretlenir.</div></div>
+    ${d.ocrConfidence!=null && d.ocrConfidence<70 ? `<div class="banner warn">⚠️ OCR güven skoru düşük (${d.ocrConfidence.toFixed(1)}%). Manuel doğrulama zorunludur.</div>`:''}
+    ${ambig.length? `<div class="banner warn">⚠️ Karışabilecek ifadeler tespit edildi: ${ambig.map(a=>`<span class="chip">${escapeHtml(a)}</span>`).join('')} Lütfen ilgili alanları dikkatle kontrol edin.</div>`:''}
+
+    <div class="card">
+      <h3>Hasta Bilgileri</h3>
+      <div class="grid cols-3">
+        ${verifyField('hasta','ad','Hasta Adı')}
+        ${verifyField('hasta','soyad','Hasta Soyadı')}
+        ${verifyField('hasta','tckn','T.C. Kimlik No')}
+        ${verifyField('hasta','dogumTarihi','Doğum Tarihi', 'date')}
+        ${verifyField('hasta','cinsiyet','Cinsiyet','select',['','Kadın','Erkek'])}
+      </div>
+    </div>
+    <div class="card">
+      <h3>Reçete Bilgileri</h3>
+      <div class="grid cols-3">
+        ${verifyField('recete','no','Reçete Numarası')}
+        ${verifyField('recete','tarih','Reçete Tarihi','date')}
+        ${verifyField('recete','tur','Reçete Türü')}
+        ${verifyField('recete','doktorAdi','Doktor Adı')}
+        ${verifyField('recete','doktorBranş','Doktor Branşı')}
+        ${verifyField('recete','kurum','Kurum')}
+      </div>
+      <div class="formrow">
+        <label class="field">Reçete Açıklaması</label>
+        <textarea data-grp="recete" data-key="aciklama" class="verifyInput" rows="2">${escapeHtml(d.recete.aciklama||'')}</textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>İlaç Bilgileri</h3>
+      <div id="ilacRows"></div>
+      <button class="btn sm" id="addIlacBtn">+ İlaç Satırı Ekle</button>
+    </div>
+
+    <div class="card">
+      <label class="mask-toggle"><input type="checkbox" id="confirmCheck"> Tüm alanları reçete görseliyle karşılaştırdım ve doğruladım.</label>
+      <div class="flex" style="margin-top:12px">
+        <button class="btn" id="backToOcr">← OCR'a Dön</button>
+        <button class="btn primary" id="toControlBtn" disabled>SUD Kontrolüne Geç →</button>
+      </div>
+    </div>
+  `;
+  renderIlacRows();
+  bindVerifyInputs();
+  document.getElementById('addIlacBtn').onclick = ()=>{ d.ilaclar.push(blankIlacRow()); renderIlacRows(); bindVerifyInputs(); };
+  document.getElementById('backToOcr').onclick = ()=>{ d.step=2; renderWizardStep(document.getElementById('content')); };
+  document.getElementById('confirmCheck').onchange = (e)=>{ document.getElementById('toControlBtn').disabled = !e.target.checked; };
+  document.getElementById('toControlBtn').onclick = async ()=>{
+    d.step = 4;
+    d.controlledAt = nowIso();
+    d.sonuclar = await runControl(d);
+    renderWizardStep(document.getElementById('content'));
+  };
+}
+function verifyField(grp,key,label,type,options){
+  const d = App.draft;
+  const val = d[grp][key]||'';
+  const manualKey = grp+'.'+key;
+  const isManual = d.manualFields.has(manualKey);
+  let input;
+  if(type==='select'){
+    input = `<select data-grp="${grp}" data-key="${key}" class="verifyInput ${isManual?'inline-edited':''}">
+      ${options.map(o=>`<option ${o===val?'selected':''}>${escapeHtml(o)}</option>`).join('')}
+    </select>`;
+  } else {
+    input = `<input type="${type||'text'}" data-grp="${grp}" data-key="${key}" class="verifyInput ${isManual?'inline-edited':''}" value="${escapeHtml(val)}">`;
+  }
+  return `<div class="formrow">
+    <label class="field">${label} ${isManual?'<span class="badge manual">MANUEL DÜZELTİLDİ</span>':''}</label>
+    ${input}
+  </div>`;
+}
+function bindVerifyInputs(){
+  document.querySelectorAll('.verifyInput').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const grp = el.dataset.grp, key = el.dataset.key;
+      const d = App.draft;
+      if(grp==='ilac'){
+        const idx = Number(el.dataset.idx);
+        const before = d.ilaclar[idx][key];
+        d.ilaclar[idx][key] = el.value;
+        if(before!==el.value) d.ilaclar[idx].__manual = d.ilaclar[idx].__manual||new Set();
+        if(before!==el.value) d.ilaclar[idx].__manual.add(key);
+        recomputeGunlukDoz(d.ilaclar[idx]);
+      } else {
+        d[grp][key] = el.value;
+        d.manualFields.add(grp+'.'+key);
+      }
+      // sadece etkilenen satırı/kartı yeniden çiz (basit yaklaşım: tüm adımı yeniden çiz)
+      renderWizardStep(document.getElementById('content'));
+    });
+  });
+}
+function recomputeGunlukDoz(ilac){
+  const dozNum = parseFloat((ilac.doz||'').replace(',','.'));
+  const freqM = (ilac.kullanimSikligi||'').match(/(\d+)\s*[xX]\s*(\d+)/);
+  if(!isNaN(dozNum) && freqM){
+    const perDay = Number(freqM[1]);
+    ilac.gunlukDoz = String(dozNum*perDay);
+  }
+}
+function renderIlacRows(){
+  const d = App.draft;
+  const wrap = document.getElementById('ilacRows');
+  wrap.innerHTML = d.ilaclar.map((ilac,idx)=>{
+    const manual = ilac.__manual||new Set();
+    const f = (key,label,type)=>{
+      const isManual = manual.has(key);
+      return `<div class="formrow">
+        <label class="field">${label} ${isManual?'<span class="badge manual">MANUEL DÜZELTİLDİ</span>':''}</label>
+        <input type="${type||'text'}" data-grp="ilac" data-idx="${idx}" data-key="${key}" class="verifyInput ${isManual?'inline-edited':''}" value="${escapeHtml(ilac[key]||'')}">
+      </div>`;
+    };
+    return `<div class="med-card">
+      <div class="mhead"><span class="name">İlaç #${idx+1}</span>
+        <button class="btn sm danger" onclick="removeIlacRow(${idx})">Sil</button></div>
+      <div class="grid cols-3">
+        ${f('ilacAdi','İlaç Adı')}
+        ${f('etkenMadde','Etken Madde')}
+        ${f('barkod','Barkod')}
+        ${f('ambalajMiktari','Ambalaj Miktarı')}
+        ${f('doz','Doz (ör. 500 mg)')}
+        ${f('kullanimSikligi','Kullanım Sıklığı (ör. 2x1)')}
+        ${f('kullanimSuresiGun','Kullanım Süresi (gün)','number')}
+        ${f('gunlukDoz','Günlük Doz (otomatik/elle)')}
+        ${f('kutuAdedi','Kutu Adedi','number')}
+        ${f('farmasotikForm','Farmasötik Form')}
+      </div>
+      <div class="formrow">
+        <label class="field">Reçetedeki Açıklama</label>
+        <textarea data-grp="ilac" data-idx="${idx}" data-key="aciklama" class="verifyInput" rows="2">${escapeHtml(ilac.aciklama||'')}</textarea>
+      </div>
+      ${ilac.rawLine? `<div class="small">OCR ham satır: “${escapeHtml(ilac.rawLine)}”</div>`:''}
+    </div>`;
+  }).join('');
+}
+function removeIlacRow(idx){
+  App.draft.ilaclar.splice(idx,1);
+  renderIlacRows(); bindVerifyInputs();
+}
+
+/* =========================================================================
+   6. SUD KURAL MOTORU
+   ========================================================================= */
+function findMedicationMatch(ilac){
+  const nName = normTr(ilac.ilacAdi);
+  const nEtken = normTr(ilac.etkenMadde);
+  let match = null;
+  if(ilac.barkod){
+    match = App.medications.find(m=>m.barkod && m.barkod===ilac.barkod);
+  }
+  if(!match && nName){
+    match = App.medications.find(m=> normTr(m.ilacAdi)===nName );
+    if(!match) match = App.medications.find(m=> normTr(m.ilacAdi).includes(nName) || nName.includes(normTr(m.ilacAdi)) );
+  }
+  if(!match && nEtken){
+    match = App.medications.find(m=> normTr(m.etkenMadde)===nEtken );
+  }
+  return match;
+}
+function findApplicableRules(medMatch, ilac, receteTarihi){
+  if(!medMatch) return [];
+  const nName = normTr(medMatch.ilacAdi);
+  const dateOk = (r)=>{
+    if(!receteTarihi) return true; // tarih yoksa filtreleme yapılamaz; kural yine de aday sayılır (KONTROL EDİLEMEDİ tarihte belirtilecek)
+    const rd = new Date(receteTarihi);
+    const from = r.gecerlilikBaslangic? new Date(r.gecerlilikBaslangic): null;
+    const to = r.gecerlilikBitis? new Date(r.gecerlilikBitis): null;
+    if(from && rd<from) return false;
+    if(to && rd>to) return false;
+    return true;
+  };
+  return App.sudRules.filter(r=> r.aktif!==false && dateOk(r) && (
+    normTr(r.ilacAdi)===nName || (r.etkenMadde && normTr(r.etkenMadde)===normTr(medMatch.etkenMadde))
+  ));
+}
+function evalRuleForIlac(rule, ilac, medMatch){
+  const checks = [];
+  const kutu = parseFloat(ilac.kutuAdedi);
+  const sure = parseFloat(ilac.kullanimSuresiGun);
+  const gunlukDoz = parseFloat(ilac.gunlukDoz);
+
+  // İlaç eşleşmesi
+  checks.push({label:'İlaç eşleşmesi', status:'OK', detail:medMatch.ilacAdi, kuralAdi:rule.kuralAdi});
+  // Etken madde eşleşmesi
+  if(ilac.etkenMadde){
+    const ok = normTr(ilac.etkenMadde)===normTr(medMatch.etkenMadde);
+    checks.push({label:'Etken madde eşleşmesi', status: ok?'OK':'WARN',
+      detail: ok? medMatch.etkenMadde : `Reçete: ${ilac.etkenMadde} / Veritabanı: ${medMatch.etkenMadde}`, kuralAdi:rule.kuralAdi});
+  } else {
+    checks.push({label:'Etken madde eşleşmesi', status:'NA', detail:'Reçetede etken madde bilgisi girilmedi', kuralAdi:rule.kuralAdi});
+  }
+  // Kutu sayısı kontrolü
+  if(rule.izinVerilenKutuSayisi!=null && rule.izinVerilenKutuSayisi!==''){
+    if(isNaN(kutu)){
+      checks.push({label:'Kutu miktarı kontrolü', status:'NA', detail:'Reçetede kutu adedi okunamadı/girilmedi', kuralAdi:rule.kuralAdi});
+    } else {
+      const limit = Number(rule.izinVerilenKutuSayisi);
+      checks.push({label:'Kutu miktarı kontrolü', status: kutu<=limit?'OK':'BAD',
+        detail:`Reçete: ${kutu} kutu / İzin verilen: ${limit} kutu`, kuralAdi:rule.kuralAdi,
+        recValue:kutu, sudValue:limit, param:'kutuSayisi'});
+    }
+  } else {
+    checks.push({label:'Kutu miktarı kontrolü', status:'NA', detail:'Bu kural için kutu sınırı tanımlanmamış', kuralAdi:rule.kuralAdi});
+  }
+  // Süre kontrolü
+  if((rule.izinVerilenSureMinGun!=null && rule.izinVerilenSureMinGun!=='') || (rule.izinVerilenSureMaxGun!=null && rule.izinVerilenSureMaxGun!=='')){
+    if(isNaN(sure)){
+      checks.push({label:'Süre kontrolü', status:'NA', detail:'Reçetede kullanım süresi okunamadı/girilmedi', kuralAdi:rule.kuralAdi});
+    } else {
+      const min = rule.izinVerilenSureMinGun!==''? Number(rule.izinVerilenSureMinGun): null;
+      const max = rule.izinVerilenSureMaxGun!==''? Number(rule.izinVerilenSureMaxGun): null;
+      const withinMin = min==null || sure>=min;
+      const withinMax = max==null || sure<=max;
+      checks.push({label:'Süre kontrolü', status:(withinMin&&withinMax)?'OK':'BAD',
+        detail:`Reçete: ${sure} gün / İzin verilen: ${min??'—'}–${max??'—'} gün`, kuralAdi:rule.kuralAdi,
+        recValue:sure, sudValue:`${min??'—'}-${max??'—'}`, param:'kullanimSuresi'});
+    }
+  } else {
+    checks.push({label:'Süre kontrolü', status:'NA', detail:'Bu kural için süre sınırı tanımlanmamış', kuralAdi:rule.kuralAdi});
+  }
+  // Günlük doz kontrolü
+  if(rule.izinVerilenGunlukDoz!=null && rule.izinVerilenGunlukDoz!==''){
+    if(isNaN(gunlukDoz)){
+      checks.push({label:'Günlük doz kontrolü', status:'NA', detail:'Günlük doz hesaplanamadı (doz/kullanım sıklığı eksik veya belirsiz)', kuralAdi:rule.kuralAdi});
+    } else {
+      const limit = Number(rule.izinVerilenGunlukDoz);
+      checks.push({label:'Günlük doz kontrolü', status: gunlukDoz<=limit?'OK':'BAD',
+        detail:`Reçete: ${gunlukDoz} / İzin verilen üst sınır: ${limit}`, kuralAdi:rule.kuralAdi,
+        recValue:gunlukDoz, sudValue:limit, param:'gunlukDoz'});
+    }
+  } else {
+    checks.push({label:'Günlük doz kontrolü', status:'NA', detail:'Bu kural için günlük doz sınırı tanımlanmamış', kuralAdi:rule.kuralAdi});
+  }
+  // Özel şart
+  if(rule.ozelSart){
+    checks.push({label:'Özel şart', status:'WARN', detail:rule.ozelSart+' — otomatik doğrulanamaz, manuel değerlendirme gereklidir.', kuralAdi:rule.kuralAdi});
+  }
+  // kontrolParametresi tanımlı ama yukarıdaki üç standart parametre dışında ise otomatik değerlendirilemez
+  if(rule.kontrolParametresi && !['kutuSayisi','kullanimSuresi','gunlukDoz'].includes(rule.kontrolParametresi)){
+    checks.push({label:'Özel parametre: '+rule.kontrolParametresi, status:'WARN',
+      detail:'Bu parametre için otomatik kontrol mantığı tanımlı değildir; manuel değerlendirme gereklidir.', kuralAdi:rule.kuralAdi});
+  }
+  return checks;
+}
+function worstStatus(list){
+  for(const s of STATUS_PRIORITY) if(list.includes(s)) return s;
+  return 'NA';
+}
+async function runControl(draft){
+  const ilacSonuclari = [];
+  for(const ilac of draft.ilaclar){
+    if(!ilac.ilacAdi){ continue; }
+    const medMatch = findMedicationMatch(ilac);
+    let checks = [];
+    let status;
+    if(!medMatch){
+      status = 'NA';
+      checks = [{label:'İlaç eşleşmesi', status:'NA', detail:'İlaç veritabanında eşleşme bulunamadı — kontrol yapılamıyor.'}];
+    } else {
+      const rules = findApplicableRules(medMatch, ilac, draft.recete.tarih);
+      if(rules.length===0){
+        status = 'NA';
+        checks = [
+          {label:'İlaç eşleşmesi', status:'OK', detail:medMatch.ilacAdi},
+          {label:'SUD kural eşleşmesi', status:'NA', detail:'Bu ilaç/etken madde için (reçete tarihinde geçerli) tanımlı bir SUD kuralı bulunamadı.'},
+        ];
+      } else {
+        let allChecks = [];
+        rules.forEach(r=>{ allChecks = allChecks.concat(evalRuleForIlac(r, ilac, medMatch)); });
+        checks = allChecks;
+      }
+      status = worstStatus(checks.map(c=>c.status));
+    }
+    ilacSonuclari.push({
+      ilacId: ilac.id, ilacAdi: ilac.ilacAdi, etkenMadde: ilac.etkenMadde, doz: ilac.doz,
+      kullanimSikligi: ilac.kullanimSikligi, kutuAdedi: ilac.kutuAdedi, kullanimSuresiGun: ilac.kullanimSuresiGun,
+      medMatchId: medMatch? medMatch.id : null,
+      status, checks,
+    });
+  }
+  const counts = {toplam:ilacSonuclari.length, uygun:0, uyari:0, uygunsuz:0, kontrolEdilemedi:0};
+  ilacSonuclari.forEach(r=>{
+    if(r.status==='OK') counts.uygun++;
+    else if(r.status==='WARN') counts.uyari++;
+    else if(r.status==='BAD') counts.uygunsuz++;
+    else counts.kontrolEdilemedi++;
+  });
+  const genelSonuc = worstStatus(ilacSonuclari.map(r=>r.status));
+  return {
+    ilacSonuclari, counts, genelSonuc,
+    kontrolTarihi: nowIso(),
+    kontrolEden: (App.settings.kontrolEden)||'—',
+    ruleSetValidatedAtControl: App.settings.sudRulesValidated && !App.settings.sudRulesChangedSinceValidation,
+  };
+}
+
+/* ---- STEP 4: Kontrol sonucu ekranı ---- */
+function renderStepControl(body){
+  const d = App.draft;
+  const s = d.sonuclar;
+  const genel = STATUS[s.genelSonuc];
+  body.innerHTML = `
+    <div class="card">
+      <div class="flex" style="justify-content:space-between;flex-wrap:wrap">
+        <div>
+          <h3 style="margin-bottom:2px">Reçete Kontrol Sonucu</h3>
+          <div class="small">Reçete No: ${escapeHtml(d.recete.no||'—')} · Tarih: ${fmtDate(d.recete.tarih)} · Kontrol: ${fmtDateTime(s.kontrolTarihi)}</div>
+        </div>
+        <div class="badge ${genel.cls}" style="font-size:14px;padding:8px 16px">${genel.icon} GENEL SONUÇ: ${s.genelSonuc==='OK'?'UYGUN':'KONTROL GEREKLİ'}</div>
+      </div>
+      ${!s.ruleSetValidatedAtControl? '<div class="banner warn" style="margin-top:10px">⚠️ Bu kontrol, kullanıcı tarafından doğrulanmamış bir SUD kural setiyle yapılmıştır. Sonuçlar demo/test amaçlıdır.</div>':''}
+      <div class="grid cols-4" style="margin-top:14px">
+        <div class="stat"><div class="n">${s.counts.toplam}</div><div class="l">Toplam İlaç</div></div>
+        <div class="stat accent-ok"><div class="n">${s.counts.uygun}</div><div class="l">Uygun</div></div>
+        <div class="stat accent-warn"><div class="n">${s.counts.uyari}</div><div class="l">Uyarı</div></div>
+        <div class="stat accent-bad"><div class="n">${s.counts.uygunsuz}</div><div class="l">Uygunsuz</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Reçete Görseli (işaretlenmiş)</h3>
+      <div id="annotWrap" style="position:relative;display:inline-block;max-width:100%">
+        <img id="annotImg" src="${d.editedDataUrl||d.imageDataUrl}" style="max-width:100%;border:1px solid var(--border);border-radius:8px">
+      </div>
+      <p class="small">Kırmızı/sarı/yeşil kutular, OCR kelime konumlarıyla eşleştirilebilen ilaçları gösterir (en iyi çaba; her ilaç için işaretleme bulunamayabilir).</p>
+    </div>
+
+    <div class="card">
+      <h3>İlaç Bazlı Kontrol Kartları</h3>
+      ${s.ilacSonuclari.map((r,idx)=>renderMedCard(r,idx)).join('') || '<p class="small">Kontrol edilecek ilaç bulunamadı.</p>'}
+    </div>
+
+    <div class="card">
+      <h3>Reçete Detay Tablosu</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>İlaç</th><th>Etken Madde</th><th>Doz</th><th>Kullanım</th><th>Kutu</th><th>SUD Sonucu</th></tr></thead>
+        <tbody>
+          ${s.ilacSonuclari.map(r=>`<tr><td>${escapeHtml(r.ilacAdi)}</td><td>${escapeHtml(r.etkenMadde||'—')}</td>
+            <td>${escapeHtml(r.doz||'—')}</td><td>${escapeHtml(r.kullanimSikligi||'—')}</td><td>${escapeHtml(r.kutuAdedi||'—')}</td>
+            <td><span class="badge ${STATUS[r.status].cls}">${STATUS[r.status].icon} ${STATUS[r.status].label}</span></td></tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="card flex wrap">
+      <button class="btn" id="backToVerify">← Doğrulamaya Dön</button>
+      <button class="btn primary" id="saveArchiveBtn">🗂️ Arşive Kaydet</button>
+      <button class="btn" id="goReportBtn" disabled>📊 Rapor Oluştur (önce kaydedin)</button>
+      <button class="btn ghost" id="newPrescriptionBtn">+ Yeni Reçete</button>
+    </div>
+  `;
+  document.getElementById('backToVerify').onclick = ()=>{ d.step=3; renderWizardStep(document.getElementById('content')); };
+  document.getElementById('newPrescriptionBtn').onclick = ()=>{
+    confirmDialog('Mevcut taslak kaybolacak (kaydetmediyseniz). Yeni reçeteye başlansın mı?', ()=>{
+      App.draft = newDraft(); location.hash='#upload'; route();
+    });
+  };
+  document.getElementById('saveArchiveBtn').onclick = saveDraftToArchive;
+  drawAnnotations();
+  if(d.savedToArchive){
+    document.getElementById('goReportBtn').disabled = false;
+    document.getElementById('goReportBtn').onclick = ()=>{ location.hash='#reports'; App.reportPrescriptionId = d.id; };
+  }
+}
+function renderMedCard(r, idx){
+  const st = STATUS[r.status];
+  return `<div class="med-card" id="medcard-${idx}">
+    <div class="mhead">
+      <span class="name">${escapeHtml(r.ilacAdi)}</span>
+      <span class="badge ${st.cls}">${st.icon} ${st.label}</span>
+    </div>
+    <div class="small">Etken Madde: ${escapeHtml(r.etkenMadde||'—')} · Doz: ${escapeHtml(r.doz||'—')} · Kullanım: ${escapeHtml(r.kullanimSikligi||'—')} · Kutu: ${escapeHtml(r.kutuAdedi||'—')}</div>
+    <ul class="checklist">
+      ${r.checks.map(c=>{
+        const cst = STATUS[c.status];
+        const ic = c.status==='OK'?'✔':c.status==='BAD'?'✖':c.status==='WARN'?'❗':'•';
+        return `<li><span class="ic">${ic}</span><span><b>${escapeHtml(c.label)}:</b> ${escapeHtml(c.detail)} ${c.kuralAdi?`<span class="chip">${escapeHtml(c.kuralAdi)}</span>`:''}</span></li>`;
+      }).join('')}
+    </ul>
+  </div>`;
+}
+function drawAnnotations(){
+  const d = App.draft;
+  const img = document.getElementById('annotImg');
+  const wrap = document.getElementById('annotWrap');
+  if(!img || !d.ocrWords || !d.ocrWords.length) return;
+  const draw = ()=>{
+    wrap.querySelectorAll('.annot-box').forEach(b=>b.remove());
+    const scaleX = img.clientWidth / img.naturalWidth;
+    const scaleY = img.clientHeight / img.naturalHeight;
+    d.sonuclar.ilacSonuclari.forEach((r,idx)=>{
+      const nameTok = normTr(r.ilacAdi).split(' ')[0];
+      if(!nameTok) return;
+      const w = d.ocrWords.find(w=> normTr(w.text).includes(nameTok) || nameTok.includes(normTr(w.text)));
+      if(!w || !w.bbox) return;
+      const color = r.status==='OK'?'#16a34a':r.status==='WARN'?'#eab308':r.status==='BAD'?'#dc2626':'#94a3b8';
+      const box = document.createElement('div');
+      box.className='annot-box';
+      box.style.cssText = `position:absolute;border:2px solid ${color};background:${color}22;cursor:pointer;
+        left:${w.bbox.x0*scaleX}px;top:${w.bbox.y0*scaleY}px;width:${(w.bbox.x1-w.bbox.x0)*scaleX}px;height:${(w.bbox.y1-w.bbox.y0)*scaleY}px;`;
+      box.title = r.ilacAdi+' — '+STATUS[r.status].label;
+      box.onclick = ()=>{ document.getElementById('medcard-'+idx).scrollIntoView({behavior:'smooth',block:'center'}); };
+      wrap.appendChild(box);
+    });
+  };
+  if(img.complete) draw(); else img.onload = draw;
+}
+async function saveDraftToArchive(){
+  const d = App.draft;
+  let imageId = null;
+  if(d.imageBlob){
+    imageId = uuid();
+    const finalBlob = d.editedDataUrl? await dataUrlToBlob(d.editedDataUrl) : d.imageBlob;
+    await dbPut('images', {id:imageId, blob:finalBlob, createdAt:nowIso()});
+  }
+  const record = {
+    id: d.id, imageId,
+    hasta: d.hasta, recete: d.recete, ilaclar: d.ilaclar,
+    manualFields: Array.from(d.manualFields),
+    ocrConfidence: d.ocrConfidence,
+    sonuclar: d.sonuclar,
+    controlledAt: d.controlledAt || nowIso(),
+    controlledBy: App.settings.kontrolEden||'',
+    createdAt: nowIso(),
+  };
+  await dbPut('prescriptions', record);
+  d.savedToArchive = true;
+  toast('Reçete arşive kaydedildi.','ok');
+  document.getElementById('saveArchiveBtn').textContent = '✔ Kaydedildi';
+  document.getElementById('saveArchiveBtn').disabled = true;
+  const goBtn = document.getElementById('goReportBtn');
+  goBtn.disabled = false; goBtn.textContent='📊 Rapor Oluştur';
+  goBtn.onclick = ()=>{ App.reportPrescriptionId = d.id; location.hash='#reports'; };
+}
+
+/* =========================================================================
+   7. İLAÇ VERİTABANI
+   ========================================================================= */
+async function viewMeds(content){
+  App.medications = await dbGetAll('medications');
+  const list = App.medications;
+  content.innerHTML = `
+    <div class="card">
+      <div class="flex wrap">
+        <input type="text" id="medSearch" placeholder="İlaç adı / etken madde / barkod ara…" style="max-width:300px">
+        <span class="spacer"></span>
+        <button class="btn primary" id="addMedBtn">+ Yeni İlaç</button>
+        <label class="btn sm">İçe Aktar (CSV/XLSX/JSON)<input type="file" id="medImport" accept=".csv,.xlsx,.xls,.json" style="display:none"></label>
+        <button class="btn sm" id="medExportXlsx">Excel'e Aktar</button>
+        <button class="btn sm" id="medExportJson">JSON'a Aktar</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead><tr><th>İlaç Adı</th><th>Etken Madde</th><th>Barkod</th><th>ATC</th><th>Form</th><th>Doz</th><th>Üretici</th><th></th></tr></thead>
+        <tbody id="medTbody"></tbody>
+      </table></div>
+    </div>
+  `;
+  function renderRows(filter){
+    const q = normTr(filter||'');
+    const rows = list.filter(m=> !q || normTr(m.ilacAdi).includes(q) || normTr(m.etkenMadde).includes(q) || (m.barkod||'').includes(q));
+    document.getElementById('medTbody').innerHTML = rows.map(m=>`
+      <tr>
+        <td>${escapeHtml(m.ilacAdi)} ${m.isDemo?'<span class="badge demo">DEMO</span>':''}</td>
+        <td>${escapeHtml(m.etkenMadde||'—')}</td>
+        <td>${escapeHtml(m.barkod||'—')}</td>
+        <td>${escapeHtml(m.atcKodu||'—')}</td>
+        <td>${escapeHtml(m.farmasotikForm||'—')}</td>
+        <td>${escapeHtml(m.doz||'—')}</td>
+        <td>${escapeHtml(m.uretici||'—')}</td>
+        <td><a class="link" onclick="editMed('${m.id}')">Düzenle</a> · <a class="link" onclick="deleteMed('${m.id}')" style="color:var(--bad)">Sil</a></td>
+      </tr>`).join('') || `<tr><td colspan="8" class="small center">Kayıt bulunamadı.</td></tr>`;
+  }
+  renderRows('');
+  document.getElementById('medSearch').oninput = (e)=>renderRows(e.target.value);
+  document.getElementById('addMedBtn').onclick = ()=>editMed(null);
+  document.getElementById('medExportXlsx').onclick = ()=>exportMedsXlsx(list);
+  document.getElementById('medExportJson').onclick = ()=>exportJsonFile(list, 'ilac_veritabani.json');
+  document.getElementById('medImport').onchange = (e)=>importMedsFile(e.target.files[0]);
+}
+window.editMed = async function(id){
+  const m = id? await dbGet('medications', id) : {id:uuid(), ilacAdi:'',etkenMadde:'',barkod:'',atcKodu:'',farmasotikForm:'',doz:'',ambalaj:'',birim:'',uretici:'',maksGunlukDoz:'',minKullanimSuresi:'',maksKullanimSuresi:'',ozelKontrol:'',isDemo:false};
+  openModal(`
+    <h3>${id?'İlaç Düzenle':'Yeni İlaç'}</h3>
+    <div class="grid cols-2">
+      ${mf('ilacAdi','İlaç Adı')}${mf('etkenMadde','Etken Madde')}
+      ${mf('barkod','Barkod')}${mf('atcKodu','ATC Kodu')}
+      ${mf('farmasotikForm','Farmasötik Form')}${mf('doz','Doz')}
+      ${mf('ambalaj','Ambalaj')}${mf('birim','Birim')}
+      ${mf('uretici','Üretici')}${mf('maksGunlukDoz','Maksimum Günlük Doz','number')}
+      ${mf('minKullanimSuresi','Min. Kullanım Süresi (gün)','number')}${mf('maksKullanimSuresi','Maks. Kullanım Süresi (gün)','number')}
+    </div>
+    <div class="formrow">${mf('ozelKontrol','Özel Kontrol Gereksinimleri')}</div>
+    <div class="flex right"><button class="btn" onclick="closeModal()">Vazgeç</button><button class="btn primary" id="saveMedBtn">Kaydet</button></div>
+  `);
+  function mf(key,label,type){
+    return `<div class="formrow"><label class="field">${label}</label><input type="${type||'text'}" id="mf_${key}" value="${escapeHtml(m[key]??'')}"></div>`;
+  }
+  document.getElementById('saveMedBtn').onclick = async ()=>{
+    ['ilacAdi','etkenMadde','barkod','atcKodu','farmasotikForm','doz','ambalaj','birim','uretici','maksGunlukDoz','minKullanimSuresi','maksKullanimSuresi','ozelKontrol'].forEach(k=>{
+      m[k] = document.getElementById('mf_'+k).value;
+    });
+    if(!m.ilacAdi){ toast('İlaç adı zorunludur.','err'); return; }
+    await dbPut('medications', m);
+    closeModal(); toast('İlaç kaydedildi.','ok'); route();
+  };
+};
+window.deleteMed = function(id){
+  confirmDialog('Bu ilaç kaydı silinsin mi?', async ()=>{ await dbDelete('medications', id); toast('Silindi.'); route(); }, {danger:true});
+};
+function exportMedsXlsx(list){
+  const rows = list.map(m=>({İlaçAdi:m.ilacAdi, EtkenMadde:m.etkenMadde, Barkod:m.barkod, ATC:m.atcKodu, Form:m.farmasotikForm,
+    Doz:m.doz, Ambalaj:m.ambalaj, Birim:m.birim, Uretici:m.uretici, MaksGunlukDoz:m.maksGunlukDoz,
+    MinKullanimSuresi:m.minKullanimSuresi, MaksKullanimSuresi:m.maksKullanimSuresi, OzelKontrol:m.ozelKontrol, Demo:m.isDemo?'EVET':'HAYIR'}));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ilaclar');
+  XLSX.writeFile(wb, 'ilac_veritabani.xlsx');
+}
+function exportJsonFile(obj, filename){
+  const blob = new Blob([JSON.stringify(obj,null,2)], {type:'application/json'});
+  downloadBlob(blob, filename);
+}
+async function importMedsFile(file){
+  if(!file) return;
+  try{
+    let rows;
+    if(file.name.endsWith('.json')){
+      rows = JSON.parse(await file.text());
+    } else {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array'});
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    }
+    let count=0;
+    for(const r of rows){
+      const m = {
+        id: uuid(),
+        ilacAdi: r.ilacAdi||r.İlaçAdi||r.IlacAdi||r['İlaç Adı']||'',
+        etkenMadde: r.etkenMadde||r.EtkenMadde||r['Etken Madde']||'',
+        barkod: String(r.barkod||r.Barkod||''),
+        atcKodu: r.atcKodu||r.ATC||r['ATC Kodu']||'',
+        farmasotikForm: r.farmasotikForm||r.Form||r['Farmasötik Form']||'',
+        doz: r.doz||r.Doz||'',
+        ambalaj: r.ambalaj||r.Ambalaj||'',
+        birim: r.birim||r.Birim||'',
+        uretici: r.uretici||r.Uretici||r['Üretici']||'',
+        maksGunlukDoz: r.maksGunlukDoz||r.MaksGunlukDoz||r['Maksimum Günlük Doz']||'',
+        minKullanimSuresi: r.minKullanimSuresi||r.MinKullanimSuresi||'',
+        maksKullanimSuresi: r.maksKullanimSuresi||r.MaksKullanimSuresi||'',
+        ozelKontrol: r.ozelKontrol||r.OzelKontrol||r['Özel Kontrol']||'',
+        isDemo:false,
+      };
+      if(!m.ilacAdi) continue;
+      await dbPut('medications', m);
+      count++;
+    }
+    toast(count+' ilaç içe aktarıldı.','ok');
+    route();
+  }catch(err){
+    console.error(err); toast('İçe aktarma hatası: '+err.message,'err');
+  }
+}
+
+/* =========================================================================
+   8. SUD KURALLARI
+   ========================================================================= */
+async function viewRules(content){
+  App.sudRules = await dbGetAll('sudRules');
+  const list = App.sudRules;
+  const s = App.settings;
+  content.innerHTML = `
+    <div class="card">
+      <h3>Kural Seti Doğrulama Durumu</h3>
+      ${(s.sudRulesValidated && !s.sudRulesChangedSinceValidation) ?
+        `<div class="banner info">✅ Kural seti <b>${escapeHtml(s.sudRulesValidatedNote||'')}</b> notuyla ${fmtDateTime(s.sudRulesValidatedAt)} tarihinde doğrulandı.</div>`
+        : `<div class="banner warn">⚠️ Kural seti henüz doğrulanmadı veya değiştirildi. Gerçek kullanım öncesi aşağıdan doğrulama yapılması ZORUNLUDUR.</div>`}
+      <div class="flex wrap">
+        <input type="text" id="validateNote" placeholder="Doğrulayan / kaynak notu (örn. Ad Soyad, kurum, tarih)" style="max-width:360px">
+        <button class="btn primary" id="validateBtn">Kuralları İnceledim ve Doğruluyorum</button>
+      </div>
+      <p class="small">Bu uygulama gerçek SUD mevzuatı veya ilaç bilgisi UYDURMAZ. Tüm kurallar kullanıcı tarafından girilir/içe aktarılır ve kullanılmadan önce doğrulanmalıdır.</p>
+    </div>
+    <div class="card">
+      <div class="flex wrap">
+        <input type="text" id="ruleSearch" placeholder="Kural adı / ilaç / etken madde ara…" style="max-width:300px">
+        <span class="spacer"></span>
+        <button class="btn primary" id="addRuleBtn">+ Yeni Kural</button>
+        <label class="btn sm">İçe Aktar (Excel/CSV/JSON)<input type="file" id="ruleImport" accept=".csv,.xlsx,.xls,.json" style="display:none"></label>
+        <button class="btn sm" id="ruleExportXlsx">Excel'e Aktar</button>
+        <button class="btn sm" id="ruleExportJson">JSON Yedekle</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Kural Adı</th><th>İlaç</th><th>Parametre</th><th>Versiyon</th><th>Geçerlilik</th><th>Uyarı Seviyesi</th><th>Durum</th><th></th></tr></thead>
+        <tbody id="ruleTbody"></tbody>
+      </table></div>
+    </div>
+  `;
+  function renderRows(filter){
+    const q = normTr(filter||'');
+    const rows = list.filter(r=> !q || normTr(r.kuralAdi).includes(q) || normTr(r.ilacAdi).includes(q) || normTr(r.etkenMadde).includes(q));
+    document.getElementById('ruleTbody').innerHTML = rows.map(r=>`
+      <tr>
+        <td>${escapeHtml(r.kuralAdi)} ${r.isDemo?'<span class="badge demo">DEMO</span>':''}</td>
+        <td>${escapeHtml(r.ilacAdi)}</td>
+        <td>${escapeHtml(r.kontrolParametresi||'—')}</td>
+        <td>v${r.version||1}</td>
+        <td>${fmtDate(r.gecerlilikBaslangic)} – ${r.gecerlilikBitis?fmtDate(r.gecerlilikBitis):'süresiz'}</td>
+        <td><span class="badge ${r.uyariSeviyesi==='kritik'?'bad':r.uyariSeviyesi==='uyari'?'warn':'info'}">${escapeHtml(r.uyariSeviyesi||'bilgi')}</span></td>
+        <td>${r.aktif!==false? '<span class="badge ok">AKTİF</span>':'<span class="badge none">PASİF</span>'}</td>
+        <td><a class="link" onclick="editRule('${r.id}')">Düzenle</a> · <a class="link" onclick="toggleRuleActive('${r.id}')">${r.aktif!==false?'Pasifleştir':'Aktifleştir'}</a> · <a class="link" onclick="deleteRule('${r.id}')" style="color:var(--bad)">Sil</a></td>
+      </tr>`).join('') || `<tr><td colspan="8" class="small center">Kayıt bulunamadı.</td></tr>`;
+  }
+  renderRows('');
+  document.getElementById('ruleSearch').oninput = (e)=>renderRows(e.target.value);
+  document.getElementById('addRuleBtn').onclick = ()=>editRule(null);
+  document.getElementById('ruleExportXlsx').onclick = ()=>exportRulesXlsx(list);
+  document.getElementById('ruleExportJson').onclick = ()=>exportJsonFile(list, 'sud_kurallari_yedek.json');
+  document.getElementById('ruleImport').onchange = (e)=>importRulesFile(e.target.files[0]);
+  document.getElementById('validateBtn').onclick = async ()=>{
+    const note = document.getElementById('validateNote').value.trim();
+    if(!note){ toast('Lütfen doğrulayan/kaynak notu girin.','err'); return; }
+    App.settings.sudRulesValidated = true;
+    App.settings.sudRulesValidatedAt = nowIso();
+    App.settings.sudRulesValidatedNote = note;
+    App.settings.sudRulesChangedSinceValidation = false;
+    await saveSettings(App.settings);
+    toast('Kural seti doğrulandı.','ok'); route();
+  };
+}
+async function markRulesChanged(){
+  App.settings.sudRulesChangedSinceValidation = true;
+  await saveSettings(App.settings);
+}
+window.editRule = async function(id){
+  const r = id? await dbGet('sudRules', id) : {
+    id:uuid(), groupId:uuid(), version:1, kuralAdi:'', aciklama:'', ilacAdi:'', etkenMadde:'', atcKodu:'',
+    kontrolParametresi:'kutuSayisi', minDeger:'', maxDeger:'', izinVerilenKutuSayisi:'', izinVerilenSureMinGun:'',
+    izinVerilenSureMaxGun:'', izinVerilenGunlukDoz:'', ozelSart:'', uyariSeviyesi:'uyari', kaynak:'',
+    gecerlilikBaslangic:'', gecerlilikBitis:'', aktif:true, isDemo:false, createdAt:nowIso(), updatedAt:nowIso(),
+  };
+  openModal(`
+    <h3>${id?'SUD Kuralı Düzenle':'Yeni SUD Kuralı'}</h3>
+    ${id?`<p class="small">Bu kaydı düzenlemek yeni bir versiyon (v${(r.version||1)+1}) oluşturacaktır.</p>`:''}
+    <div class="grid cols-2">
+      ${rf('kuralAdi','Kural Adı')}${rf('ilacAdi','İlaç Adı')}
+      ${rf('etkenMadde','Etken Madde')}${rf('atcKodu','ATC Kodu')}
+      ${rfSelect('kontrolParametresi','Kontrol Parametresi',['kutuSayisi','kullanimSuresi','gunlukDoz','diger'])}
+      ${rfSelect('uyariSeviyesi','Uyarı Seviyesi',['bilgi','uyari','kritik'])}
+      ${rf('minDeger','Minimum Değer (opsiyonel referans)')}${rf('maxDeger','Maksimum Değer (opsiyonel referans)')}
+      ${rf('izinVerilenKutuSayisi','İzin Verilen Kutu Sayısı','number')}${rf('izinVerilenGunlukDoz','İzin Verilen Günlük Doz','number')}
+      ${rf('izinVerilenSureMinGun','İzin Verilen Süre - Min (gün)','number')}${rf('izinVerilenSureMaxGun','İzin Verilen Süre - Maks (gün)','number')}
+      ${rf('gecerlilikBaslangic','Geçerlilik Başlangıç','date')}${rf('gecerlilikBitis','Geçerlilik Bitiş (boş=süresiz)','date')}
+      ${rf('kaynak','Kaynak')}
+      <div class="formrow"><label class="field">Aktif mi?</label><select id="rf_aktif"><option value="true" ${r.aktif!==false?'selected':''}>Aktif</option><option value="false" ${r.aktif===false?'selected':''}>Pasif</option></select></div>
+    </div>
+    <div class="formrow">${rf('aciklama','Kural Açıklaması')}</div>
+    <div class="formrow">${rf('ozelSart','Özel Şart (varsa)')}</div>
+    <div class="flex right"><button class="btn" onclick="closeModal()">Vazgeç</button><button class="btn primary" id="saveRuleBtn">Kaydet</button></div>
+  `);
+  function rf(key,label,type){
+    return `<div class="formrow"><label class="field">${label}</label><input type="${type||'text'}" id="rf_${key}" value="${escapeHtml(r[key]??'')}"></div>`;
+  }
+  function rfSelect(key,label,opts){
+    return `<div class="formrow"><label class="field">${label}</label><select id="rf_${key}">
+      ${opts.map(o=>`<option value="${o}" ${r[key]===o?'selected':''}>${o}</option>`).join('')}
+    </select></div>`;
+  }
+  document.getElementById('saveRuleBtn').onclick = async ()=>{
+    ['kuralAdi','ilacAdi','etkenMadde','atcKodu','kontrolParametresi','uyariSeviyesi','minDeger','maxDeger',
+     'izinVerilenKutuSayisi','izinVerilenGunlukDoz','izinVerilenSureMinGun','izinVerilenSureMaxGun',
+     'gecerlilikBaslangic','gecerlilikBitis','kaynak','aciklama','ozelSart'].forEach(k=>{ r[k]=document.getElementById('rf_'+k).value; });
+    r.aktif = document.getElementById('rf_aktif').value==='true';
+    if(!r.kuralAdi || !r.ilacAdi){ toast('Kural adı ve ilaç adı zorunludur.','err'); return; }
+    if(id){ r.version = (r.version||1)+1; }
+    r.updatedAt = nowIso();
+    await dbPut('sudRules', r);
+    await markRulesChanged();
+    closeModal(); toast('Kural kaydedildi.','ok'); route();
+  };
+};
+window.toggleRuleActive = async function(id){
+  const r = await dbGet('sudRules', id);
+  r.aktif = r.aktif===false ? true : false;
+  r.updatedAt = nowIso();
+  await dbPut('sudRules', r);
+  await markRulesChanged();
+  route();
+};
+window.deleteRule = function(id){
+  confirmDialog('Bu SUD kuralı silinsin mi?', async ()=>{ await dbDelete('sudRules', id); await markRulesChanged(); toast('Silindi.'); route(); }, {danger:true});
+};
+function exportRulesXlsx(list){
+  const ws = XLSX.utils.json_to_sheet(list);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'SUD_Kurallari');
+  XLSX.writeFile(wb, 'sud_kurallari.xlsx');
+}
+async function importRulesFile(file){
+  if(!file) return;
+  try{
+    let rows;
+    if(file.name.endsWith('.json')){
+      rows = JSON.parse(await file.text());
+    } else {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array'});
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+    }
+    let count=0;
+    for(const r of rows){
+      if(!r.kuralAdi && !r.KuralAdi) continue;
+      const rule = {
+        id: uuid(), groupId: r.groupId||uuid(), version: r.version||1,
+        kuralAdi: r.kuralAdi||r.KuralAdi, aciklama: r.aciklama||'',
+        ilacAdi: r.ilacAdi||r.İlaç||'', etkenMadde: r.etkenMadde||'', atcKodu: r.atcKodu||'',
+        kontrolParametresi: r.kontrolParametresi||'diger', minDeger: r.minDeger||'', maxDeger: r.maxDeger||'',
+        izinVerilenKutuSayisi: r.izinVerilenKutuSayisi||'', izinVerilenSureMinGun: r.izinVerilenSureMinGun||'',
+        izinVerilenSureMaxGun: r.izinVerilenSureMaxGun||'', izinVerilenGunlukDoz: r.izinVerilenGunlukDoz||'',
+        ozelSart: r.ozelSart||'', uyariSeviyesi: r.uyariSeviyesi||'uyari', kaynak: r.kaynak||'İçe aktarıldı',
+        gecerlilikBaslangic: r.gecerlilikBaslangic||'', gecerlilikBitis: r.gecerlilikBitis||'',
+        aktif: r.aktif!==false && r.aktif!=='false', isDemo:false, createdAt:nowIso(), updatedAt:nowIso(),
+      };
+      await dbPut('sudRules', rule);
+      count++;
+    }
+    await markRulesChanged();
+    toast(count+' kural içe aktarıldı. Kullanmadan önce lütfen doğrulayın.','ok');
+    route();
+  }catch(err){
+    console.error(err); toast('İçe aktarma hatası: '+err.message,'err');
+  }
+}
+
+/* =========================================================================
+   9. UYGUNSUZLUKLAR
+   ========================================================================= */
+async function viewViolations(content){
+  const prescriptions = await dbGetAll('prescriptions');
+  const rows = [];
+  prescriptions.forEach(p=>{
+    (p.sonuclar?.ilacSonuclari||[]).forEach(r=>{
+      (r.checks||[]).filter(c=>c.status==='BAD').forEach(c=>{
+        rows.push({
+          receteNo: p.recete.no, ilac: r.ilacAdi, etkenMadde: r.etkenMadde, kuralAdi: c.kuralAdi||'—',
+          receteDeger: c.recValue??'—', sudKriteri: c.sudValue??'—', durum: c.detail, seviye: c.status,
+          aciklama: c.detail, kontrolTarihi: p.sonuclar.kontrolTarihi, prescriptionId: p.id,
+        });
+      });
+    });
+  });
+  content.innerHTML = `
+    <div class="card flex wrap">
+      <input type="text" id="vSearch" placeholder="Reçete no / ilaç / kural ara…" style="max-width:300px">
+      <span class="spacer"></span>
+      <span class="badge bad">Toplam Uygunsuzluk: ${rows.length}</span>
+    </div>
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Reçete No</th><th>İlaç</th><th>Etken Madde</th><th>Kural</th><th>Reçete Değeri</th><th>SUD Kriteri</th><th>Açıklama</th><th>Kontrol Tarihi</th><th></th></tr></thead>
+        <tbody id="vTbody"></tbody>
+      </table></div>
+    </div>
+  `;
+  function render(filter){
+    const q = normTr(filter||'');
+    const f = rows.filter(r=> !q || normTr(r.receteNo).includes(q) || normTr(r.ilac).includes(q) || normTr(r.kuralAdi).includes(q));
+    document.getElementById('vTbody').innerHTML = f.map(r=>`
+      <tr>
+        <td>${escapeHtml(r.receteNo||'—')}</td><td>${escapeHtml(r.ilac)}</td><td>${escapeHtml(r.etkenMadde||'—')}</td>
+        <td>${escapeHtml(r.kuralAdi)}</td><td>${escapeHtml(String(r.receteDeger))}</td><td>${escapeHtml(String(r.sudKriteri))}</td>
+        <td>${escapeHtml(r.aciklama)}</td><td>${fmtDateTime(r.kontrolTarihi)}</td>
+        <td><a class="link" onclick="openArchiveItem('${r.prescriptionId}')">Reçeteyi Aç</a></td>
+      </tr>`).join('') || `<tr><td colspan="9" class="small center">Uygunsuzluk bulunamadı.</td></tr>`;
+  }
+  render('');
+  document.getElementById('vSearch').oninput = (e)=>render(e.target.value);
+}
+
+/* =========================================================================
+   10. RAPORLAR
+   ========================================================================= */
+async function viewReports(content){
+  const prescriptions = (await dbGetAll('prescriptions')).sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const selectedId = App.reportPrescriptionId || (prescriptions[0]&&prescriptions[0].id);
+  content.innerHTML = `
+    <div class="card flex wrap">
+      <label class="field" style="margin:0">Reçete Seç:</label>
+      <select id="reportSelect" style="max-width:420px">
+        ${prescriptions.map(p=>`<option value="${p.id}" ${p.id===selectedId?'selected':''}>${escapeHtml(p.recete.no||'(no yok)')} — ${escapeHtml(p.hasta.ad||'')} ${escapeHtml(p.hasta.soyad||'')} — ${fmtDate(p.controlledAt)}</option>`).join('')}
+      </select>
+      <label class="mask-toggle"><input type="checkbox" id="maskToggle" ${App.settings.varsayilanMaskeleme?'checked':''}> Hasta adı ve T.C. kimlik no'yu maskele</label>
+      <label class="mask-toggle"><input type="checkbox" id="excludePatient"> Hasta bilgilerini rapordan çıkar</label>
+      <span class="spacer"></span>
+      <button class="btn primary" id="genReportBtn">RAPOR OLUŞTUR</button>
+    </div>
+    <div id="reportPreviewWrap"></div>
+  `;
+  if(!prescriptions.length){
+    document.getElementById('reportPreviewWrap').innerHTML = '<div class="card small">Henüz kaydedilmiş kontrol edilmiş bir reçete yok. Önce "Reçete Yükle" ile bir kontrol yapıp arşive kaydedin.</div>';
+    return;
+  }
+  document.getElementById('genReportBtn').onclick = async ()=>{
+    const id = document.getElementById('reportSelect').value;
+    const mask = document.getElementById('maskToggle').checked;
+    const excludePatient = document.getElementById('excludePatient').checked;
+    const p = await dbGet('prescriptions', id);
+    App.reportPrescriptionId = id;
+    renderReportPreview(p, {mask, excludePatient});
+  };
+  if(selectedId){
+    const p = await dbGet('prescriptions', selectedId);
+    renderReportPreview(p, {mask:App.settings.varsayilanMaskeleme, excludePatient:false});
+  }
+}
+function buildReportModel(p, opts){
+  opts = opts||{};
+  const hasta = opts.excludePatient? null : {
+    ad: opts.mask? maskName(p.hasta.ad) : p.hasta.ad,
+    soyad: opts.mask? maskName(p.hasta.soyad) : p.hasta.soyad,
+    tckn: opts.mask? maskTckn(p.hasta.tckn) : p.hasta.tckn,
+    dogumTarihi: p.hasta.dogumTarihi, cinsiyet: p.hasta.cinsiyet,
+  };
+  const violations = [];
+  (p.sonuclar?.ilacSonuclari||[]).forEach(r=>{
+    (r.checks||[]).filter(c=>c.status==='BAD').forEach(c=>{
+      violations.push({ilac:r.ilacAdi, etkenMadde:r.etkenMadde, kuralAdi:c.kuralAdi, receteDeger:c.recValue, sudKriteri:c.sudValue, aciklama:c.detail});
+    });
+  });
+  return {
+    raporNo: 'RPR-'+p.id.slice(0,8).toUpperCase(),
+    olusturmaTarihi: nowIso(),
+    kurumAdi: App.settings.kurumAdi||'—',
+    receteNo: p.recete.no, receteTarihi: p.recete.tarih, hasta, doktor: p.recete.doktorAdi,
+    doktorBransi: p.recete.doktorBranş, kurum: p.recete.kurum, kontrolTarihi: p.sonuclar?.kontrolTarihi,
+    kontrolEden: p.controlledBy||p.sonuclar?.kontrolEden||'—',
+    ilaclar: p.sonuclar?.ilacSonuclari||[], violations,
+    genelSonuc: p.sonuclar?.genelSonuc, counts: p.sonuclar?.counts,
+    ruleSetValidated: p.sonuclar?.ruleSetValidatedAtControl,
+  };
+}
+function renderReportPreview(p, opts){
+  const m = buildReportModel(p, opts);
+  const wrap = document.getElementById('reportPreviewWrap');
+  wrap.innerHTML = `
+    <div class="flex wrap" style="margin:14px 0">
+      <button class="btn" id="pdfBtn">📄 PDF</button>
+      <button class="btn" id="wordBtn">📝 Word</button>
+      <button class="btn" id="excelBtn">📊 Excel</button>
+    </div>
+    <div class="print-report" id="printReport">${renderReportHtml(m)}</div>
+  `;
+  document.getElementById('pdfBtn').onclick = ()=>exportReportPdf(m);
+  document.getElementById('wordBtn').onclick = ()=>exportReportWord(m);
+  document.getElementById('excelBtn').onclick = ()=>exportReportExcel(m);
+}
+function renderReportHtml(m){
+  const genel = STATUS[m.genelSonuc]||STATUS.NA;
+  return `
+    <div class="pr-head">
+      <div>
+        <h1>${escapeHtml(m.kurumAdi)}</h1>
+        <div class="small">Reçete SUD Ön Kontrol Raporu</div>
+      </div>
+      <div class="meta">
+        Rapor No: ${escapeHtml(m.raporNo)}<br>
+        Tarih: ${fmtDateTime(m.olusturmaTarihi)}<br>
+        Reçete No: ${escapeHtml(m.receteNo||'—')}
+      </div>
+    </div>
+    <h2>Reçete Bilgileri</h2>
+    <table>
+      <tr><td><b>Reçete No</b></td><td>${escapeHtml(m.receteNo||'—')}</td><td><b>Reçete Tarihi</b></td><td>${fmtDate(m.receteTarihi)}</td></tr>
+      ${m.hasta? `<tr><td><b>Hasta</b></td><td>${escapeHtml((m.hasta.ad||'')+' '+(m.hasta.soyad||''))}</td><td><b>T.C. Kimlik No</b></td><td>${escapeHtml(m.hasta.tckn||'—')}</td></tr>` : `<tr><td colspan="4" class="small">Hasta bilgileri bu rapordan çıkarılmıştır.</td></tr>`}
+      <tr><td><b>Doktor</b></td><td>${escapeHtml(m.doktor||'—')} ${m.doktorBransi?('/ '+escapeHtml(m.doktorBransi)):''}</td><td><b>Kurum</b></td><td>${escapeHtml(m.kurum||'—')}</td></tr>
+      <tr><td><b>Kontrol Tarihi</b></td><td>${fmtDateTime(m.kontrolTarihi)}</td><td><b>Kontrol Eden</b></td><td>${escapeHtml(m.kontrolEden||'—')}</td></tr>
+    </table>
+    ${!m.ruleSetValidated? '<p style="color:#a16207"><b>⚠️ Not:</b> Bu kontrol, kullanıcı tarafından doğrulanmamış bir SUD kural setiyle yapılmıştır.</p>':''}
+
+    <h2>İlaçlar</h2>
+    <table>
+      <thead><tr><th>İlaç</th><th>Etken Madde</th><th>Doz</th><th>Kullanım</th><th>Kutu</th><th>Süre</th><th>Sonuç</th></tr></thead>
+      <tbody>
+      ${m.ilaclar.map(r=>`<tr><td>${escapeHtml(r.ilacAdi)}</td><td>${escapeHtml(r.etkenMadde||'—')}</td><td>${escapeHtml(r.doz||'—')}</td>
+        <td>${escapeHtml(r.kullanimSikligi||'—')}</td><td>${escapeHtml(r.kutuAdedi||'—')}</td><td>${escapeHtml(r.kullanimSuresiGun||'—')}</td>
+        <td>${STATUS[r.status].icon} ${STATUS[r.status].label}</td></tr>`).join('')}
+      </tbody>
+    </table>
+
+    <h2>SUD Kontrol Sonuçları (Detay)</h2>
+    ${m.ilaclar.map(r=>`
+      <p><b>${escapeHtml(r.ilacAdi)}</b> — ${STATUS[r.status].icon} ${STATUS[r.status].label}</p>
+      <table><tbody>
+      ${(r.checks||[]).map(c=>`<tr><td style="width:20px">${c.status==='OK'?'✔':c.status==='BAD'?'✖':c.status==='WARN'?'❗':'•'}</td><td>${escapeHtml(c.label)}</td><td>${escapeHtml(c.detail)}</td></tr>`).join('')}
+      </tbody></table>
+    `).join('')}
+
+    <h2>Uygunsuzluklar</h2>
+    ${m.violations.length? `<table>
+      <thead><tr><th>İlaç</th><th>Kural</th><th>Reçete Değeri</th><th>SUD Kriteri</th><th>Açıklama</th></tr></thead>
+      <tbody>${m.violations.map(v=>`<tr><td>${escapeHtml(v.ilac)}</td><td>${escapeHtml(v.kuralAdi||'—')}</td><td>${escapeHtml(String(v.receteDeger))}</td><td>${escapeHtml(String(v.sudKriteri))}</td><td>${escapeHtml(v.aciklama)}</td></tr>`).join('')}</tbody>
+    </table>` : '<p class="small">Tespit edilen uygunsuzluk yok.</p>'}
+
+    <h2>Genel Sonuç</h2>
+    <p style="font-size:16px;font-weight:800;color:${genel.cls==='ok'?'#15803d':genel.cls==='bad'?'#b91c1c':genel.cls==='warn'?'#a16207':'#475569'}">
+      ${genel.icon} ${m.genelSonuc==='OK'?'UYGUN':'KONTROL GEREKLİ'} — Toplam ${m.counts?.toplam||0} ilaç: ${m.counts?.uygun||0} uygun, ${m.counts?.uyari||0} uyarı, ${m.counts?.uygunsuz||0} uygunsuz, ${m.counts?.kontrolEdilemedi||0} kontrol edilemedi.
+    </p>
+    <p class="small">Bu rapor yalnızca tanımlanmış SUD kurallarına göre otomatik ön kontrol sonucudur; tıbbi karar veya kesin geri ödeme kararı yerine geçmez. Nihai değerlendirme sorumlu eczacı/hekime aittir.</p>
+  `;
+}
+async function exportReportPdf(m){
+  toast('PDF oluşturuluyor…');
+  const el = document.getElementById('printReport');
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF('p','pt','a4');
+  const pageW = doc.internal.pageSize.getWidth();
+  await doc.html(el, {
+    x:24, y:24, width: pageW-48, windowWidth: el.scrollWidth,
+    html2canvas:{scale:2, useCORS:true},
+    autoPaging:'text',
+    callback: (doc)=>{
+      const pageCount = doc.internal.getNumberOfPages();
+      for(let i=1;i<=pageCount;i++){
+        doc.setPage(i);
+        doc.setFontSize(8); doc.setTextColor(120);
+        doc.text(`Rapor No: ${m.raporNo}  ·  Reçete No: ${m.receteNo||'—'}  ·  Sayfa ${i}/${pageCount}`, 24, doc.internal.pageSize.getHeight()-16);
+      }
+      doc.save(`SUD_Rapor_${m.raporNo}.pdf`);
+      toast('PDF indirildi.','ok');
+    }
+  });
+}
+async function exportReportWord(m){
+  const { Document, Packer, Paragraph, Table, TableRow, TableCell, HeadingLevel, TextRun, WidthType } = docx;
+  const mkTable = (headers, rows)=> new Table({
+    width:{size:100, type:WidthType.PERCENTAGE},
+    rows:[
+      new TableRow({children: headers.map(h=> new TableCell({children:[new Paragraph({children:[new TextRun({text:h, bold:true})]})]}))}),
+      ...rows.map(r=> new TableRow({children: r.map(c=> new TableCell({children:[new Paragraph(String(c??'—'))]}))}))
+    ]
+  });
+  const children = [
+    new Paragraph({text: m.kurumAdi||'Eczane', heading:HeadingLevel.TITLE}),
+    new Paragraph({text: `Reçete SUD Ön Kontrol Raporu — ${m.raporNo}`}),
+    new Paragraph({text: `Tarih: ${fmtDateTime(m.olusturmaTarihi)}    Reçete No: ${m.receteNo||'—'}`}),
+    new Paragraph({text:''}),
+    new Paragraph({text:'Reçete Bilgileri', heading:HeadingLevel.HEADING_1}),
+    mkTable(['Alan','Değer'], [
+      ['Reçete No', m.receteNo], ['Reçete Tarihi', fmtDate(m.receteTarihi)],
+      ['Hasta', m.hasta? ((m.hasta.ad||'')+' '+(m.hasta.soyad||'')) : 'Rapordan çıkarıldı'],
+      ['T.C. Kimlik No', m.hasta? m.hasta.tckn : '—'],
+      ['Doktor', m.doktor], ['Kurum', m.kurum],
+      ['Kontrol Tarihi', fmtDateTime(m.kontrolTarihi)], ['Kontrol Eden', m.kontrolEden],
+    ]),
+    new Paragraph({text:''}),
+    new Paragraph({text:'İlaçlar', heading:HeadingLevel.HEADING_1}),
+    mkTable(['İlaç','Etken Madde','Doz','Kullanım','Kutu','Süre','Sonuç'],
+      m.ilaclar.map(r=>[r.ilacAdi, r.etkenMadde, r.doz, r.kullanimSikligi, r.kutuAdedi, r.kullanimSuresiGun, STATUS[r.status].label])),
+    new Paragraph({text:''}),
+    new Paragraph({text:'Uygunsuzluklar', heading:HeadingLevel.HEADING_1}),
+    m.violations.length? mkTable(['İlaç','Kural','Reçete Değeri','SUD Kriteri','Açıklama'],
+      m.violations.map(v=>[v.ilac, v.kuralAdi, v.receteDeger, v.sudKriteri, v.aciklama]))
+      : new Paragraph('Tespit edilen uygunsuzluk yok.'),
+    new Paragraph({text:''}),
+    new Paragraph({text:'Genel Sonuç', heading:HeadingLevel.HEADING_1}),
+    new Paragraph({text: (m.genelSonuc==='OK'?'UYGUN':'KONTROL GEREKLİ') + ` — Toplam ${m.counts?.toplam||0} ilaç: ${m.counts?.uygun||0} uygun, ${m.counts?.uyari||0} uyarı, ${m.counts?.uygunsuz||0} uygunsuz, ${m.counts?.kontrolEdilemedi||0} kontrol edilemedi.`}),
+    new Paragraph({text:'Bu rapor yalnızca tanımlanmış SUD kurallarına göre otomatik ön kontrol sonucudur; tıbbi karar veya kesin geri ödeme kararı yerine geçmez.'}),
+  ];
+  const doc = new Document({sections:[{children}]});
+  const blob = await Packer.toBlob(doc);
+  downloadBlob(blob, `SUD_Rapor_${m.raporNo}.docx`);
+  toast('Word raporu indirildi.','ok');
+}
+function exportReportExcel(m){
+  const wb = XLSX.utils.book_new();
+  const infoWs = XLSX.utils.json_to_sheet([
+    {Alan:'Rapor No', Değer:m.raporNo}, {Alan:'Reçete No', Değer:m.receteNo}, {Alan:'Reçete Tarihi', Değer:fmtDate(m.receteTarihi)},
+    {Alan:'Hasta', Değer: m.hasta? ((m.hasta.ad||'')+' '+(m.hasta.soyad||'')) : 'Rapordan çıkarıldı'},
+    {Alan:'Doktor', Değer:m.doktor}, {Alan:'Kurum', Değer:m.kurum},
+    {Alan:'Kontrol Tarihi', Değer:fmtDateTime(m.kontrolTarihi)}, {Alan:'Kontrol Eden', Değer:m.kontrolEden},
+    {Alan:'Genel Sonuç', Değer: m.genelSonuc==='OK'?'UYGUN':'KONTROL GEREKLİ'},
+  ]);
+  XLSX.utils.book_append_sheet(wb, infoWs, 'Reçete Bilgileri');
+  const medWs = XLSX.utils.json_to_sheet(m.ilaclar.map(r=>({İlaç:r.ilacAdi, EtkenMadde:r.etkenMadde, Doz:r.doz, Kullanim:r.kullanimSikligi, Kutu:r.kutuAdedi, Sure:r.kullanimSuresiGun, Sonuc:STATUS[r.status].label})));
+  XLSX.utils.book_append_sheet(wb, medWs, 'İlaçlar');
+  const vWs = XLSX.utils.json_to_sheet(m.violations.map(v=>({İlaç:v.ilac, Kural:v.kuralAdi, ReceteDegeri:v.receteDeger, SudKriteri:v.sudKriteri, Aciklama:v.aciklama})));
+  XLSX.utils.book_append_sheet(wb, vWs, 'Uygunsuzluklar');
+  XLSX.writeFile(wb, `SUD_Rapor_${m.raporNo}.xlsx`);
+  toast('Excel raporu indirildi.','ok');
+}
+
+/* =========================================================================
+   11. REÇETE ARŞİVİ
+   ========================================================================= */
+async function viewArchive(content){
+  const prescriptions = (await dbGetAll('prescriptions')).sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  content.innerHTML = `
+    <div class="card flex wrap">
+      <input type="text" id="aSearch" placeholder="Reçete no / hasta / doktor / ilaç ara…" style="max-width:280px">
+      <select id="aFilter">
+        <option value="">Tüm Sonuçlar</option>
+        <option value="OK">🟢 UYGUN</option>
+        <option value="WARN">🟡 UYARI</option>
+        <option value="BAD">🔴 UYGUNSUZ</option>
+        <option value="NA">⚪ KONTROL EDİLEMEDİ</option>
+      </select>
+      <input type="date" id="aDate">
+      <span class="spacer"></span>
+      <span class="small">${prescriptions.length} kayıt</span>
+    </div>
+    <div id="archiveList"></div>
+  `;
+  function statusOfPrescription(p){
+    const s = p.sonuclar?.ilacSonuclari||[];
+    if(s.some(r=>r.status==='BAD')) return 'BAD';
+    if(s.some(r=>r.status==='WARN')) return 'WARN';
+    if(s.some(r=>r.status==='NA')) return 'NA';
+    return 'OK';
+  }
+  function render(){
+    const q = normTr(document.getElementById('aSearch').value);
+    const filt = document.getElementById('aFilter').value;
+    const date = document.getElementById('aDate').value;
+    const rows = prescriptions.filter(p=>{
+      if(filt && statusOfPrescription(p)!==filt) return false;
+      if(date && (p.recete.tarih||'').slice(0,10)!==date) return false;
+      if(q){
+        const hay = normTr([p.recete.no, p.hasta.ad, p.hasta.soyad, p.recete.doktorAdi, ...(p.sonuclar?.ilacSonuclari||[]).map(r=>r.ilacAdi)].join(' '));
+        if(!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    document.getElementById('archiveList').innerHTML = rows.map(p=>{
+      const st = STATUS[statusOfPrescription(p)];
+      return `<div class="card" style="margin-bottom:10px">
+        <div class="flex wrap" style="justify-content:space-between">
+          <div>
+            <b>${escapeHtml(p.recete.no||'(reçete no yok)')}</b> — ${escapeHtml(p.hasta.ad||'')} ${escapeHtml(p.hasta.soyad||'')}
+            <div class="small">Doktor: ${escapeHtml(p.recete.doktorAdi||'—')} · Tarih: ${fmtDate(p.recete.tarih)} · Kontrol: ${fmtDateTime(p.controlledAt)}</div>
+          </div>
+          <div class="flex">
+            <span class="badge ${st.cls}">${st.icon} ${st.label}</span>
+            <button class="btn sm" onclick="openArchiveItem('${p.id}')">Görüntüle</button>
+            <button class="btn sm danger" onclick="deleteArchiveItem('${p.id}')">Sil</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('') || '<div class="card small center">Kayıt bulunamadı.</div>';
+  }
+  document.getElementById('aSearch').oninput = render;
+  document.getElementById('aFilter').onchange = render;
+  document.getElementById('aDate').onchange = render;
+  render();
+}
+window.openArchiveItem = async function(id){
+  const p = await dbGet('prescriptions', id);
+  if(!p){ toast('Kayıt bulunamadı.','err'); return; }
+  let imgUrl = null;
+  if(p.imageId){
+    const img = await dbGet('images', p.imageId);
+    if(img) imgUrl = await blobToDataUrl(img.blob);
+  }
+  App.draft = {
+    id:p.id, step:4, imageDataUrl:imgUrl, editedDataUrl:imgUrl, imageMeta:{},
+    ocrRawText:'', ocrConfidence:p.ocrConfidence, ocrWords:[],
+    manualFields:new Set(p.manualFields||[]),
+    hasta:p.hasta, recete:p.recete, ilaclar:p.ilaclar,
+    sonuclar:p.sonuclar, controlledAt:p.controlledAt, savedToArchive:true,
+  };
+  location.hash='#control'; route();
+};
+window.deleteArchiveItem = function(id){
+  confirmDialog('Bu reçete kaydı arşivden kalıcı olarak silinsin mi?', async ()=>{
+    const p = await dbGet('prescriptions', id);
+    if(p && p.imageId) await dbDelete('images', p.imageId);
+    await dbDelete('prescriptions', id);
+    toast('Silindi.'); route();
+  }, {danger:true});
+};
+
+/* =========================================================================
+   12. AYARLAR
+   ========================================================================= */
+async function viewSettings(content){
+  const s = App.settings;
+  content.innerHTML = `
+    <div class="card">
+      <h3>Kurum ve Kontrol Bilgileri</h3>
+      <div class="grid cols-2">
+        <div class="formrow"><label class="field">Kurum / Eczane Adı (rapor başlığında kullanılır)</label><input type="text" id="s_kurumAdi" value="${escapeHtml(s.kurumAdi)}"></div>
+        <div class="formrow"><label class="field">Varsayılan "Kontrol Eden" Adı</label><input type="text" id="s_kontrolEden" value="${escapeHtml(s.kontrolEden)}"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Mahremiyet</h3>
+      <label class="mask-toggle"><input type="checkbox" id="s_mask" ${s.varsayilanMaskeleme?'checked':''}> Raporlarda hasta adı ve T.C. kimlik no varsayılan olarak maskelensin</label>
+      <p class="small">Reçete görselleri ve hasta verileri yalnızca bu cihazdaki tarayıcının IndexedDB alanında saklanır; hiçbir dış servise gönderilmez.</p>
+    </div>
+    <div class="card">
+      <h3>OCR</h3>
+      <p class="small">Dil paketi: Türkçe (tur). Tesseract.js dil paketini ilk kullanımda internetten indirir.</p>
+    </div>
+    <button class="btn primary" id="saveSettingsBtn">Kaydet</button>
+  `;
+  document.getElementById('saveSettingsBtn').onclick = async ()=>{
+    s.kurumAdi = document.getElementById('s_kurumAdi').value;
+    s.kontrolEden = document.getElementById('s_kontrolEden').value;
+    s.varsayilanMaskeleme = document.getElementById('s_mask').checked;
+    await saveSettings(s);
+    toast('Ayarlar kaydedildi.','ok');
+  };
+}
+
+/* =========================================================================
+   13. YEDEKLEME (JSON)
+   ========================================================================= */
+async function viewBackup(content){
+  content.innerHTML = `
+    <div class="card">
+      <h3>Tam Yedek Al</h3>
+      <p class="small">İlaç veritabanı, SUD kuralları, reçete arşivi, ayarlar ve reçete görselleri (base64) dahil tam bir JSON yedeği indirin.</p>
+      <button class="btn primary" id="fullBackupBtn">💾 JSON Yedek İndir</button>
+    </div>
+    <div class="card">
+      <h3>Yedekten Geri Yükle</h3>
+      <p class="small">Bu işlem mevcut verilerin üzerine EKLEME yapar (var olan kayıtlar korunur, aynı ID'ler güncellenir). Devam etmeden önce mevcut verilerinizi de yedeklemeniz önerilir.</p>
+      <input type="file" id="restoreFile" accept=".json">
+      <button class="btn" id="restoreBtn">Geri Yükle</button>
+    </div>
+    <div class="card">
+      <h3>Tehlikeli Bölge</h3>
+      <button class="btn danger" id="wipeBtn">Tüm Verileri Sıfırla</button>
+    </div>
+  `;
+  document.getElementById('fullBackupBtn').onclick = fullBackup;
+  document.getElementById('restoreBtn').onclick = ()=>{
+    const f = document.getElementById('restoreFile').files[0];
+    if(!f){ toast('Lütfen bir JSON dosyası seçin.','err'); return; }
+    restoreBackup(f);
+  };
+  document.getElementById('wipeBtn').onclick = ()=>{
+    confirmDialog('TÜM veriler (reçeteler, ilaçlar, kurallar, ayarlar) kalıcı olarak silinecek. Emin misiniz?', async ()=>{
+      for(const s of STORES) await dbClear(s);
+      App.settings = null;
+      toast('Tüm veriler sıfırlandı. Sayfa yeniden yükleniyor…');
+      setTimeout(()=>location.reload(), 1200);
+    }, {danger:true, yesLabel:'Evet, Sıfırla'});
+  };
+}
+async function fullBackup(){
+  toast('Yedek hazırlanıyor…');
+  const [prescriptions, medications, sudRules, images] = await Promise.all([
+    dbGetAll('prescriptions'), dbGetAll('medications'), dbGetAll('sudRules'), dbGetAll('images')
+  ]);
+  const imagesB64 = [];
+  for(const im of images){
+    imagesB64.push({id:im.id, createdAt:im.createdAt, dataUrl: await blobToDataUrl(im.blob)});
+  }
+  const payload = {
+    __app:'eczane-sud-kontrol', __version:1, exportedAt: nowIso(),
+    settings: App.settings, prescriptions, medications, sudRules, images: imagesB64,
+  };
+  exportJsonFile(payload, `eczane_sud_yedek_${new Date().toISOString().slice(0,10)}.json`);
+  toast('Yedek indirildi.','ok');
+}
+async function restoreBackup(file){
+  try{
+    const payload = JSON.parse(await file.text());
+    if(payload.__app!=='eczane-sud-kontrol') throw new Error('Geçersiz yedek dosyası formatı.');
+    for(const m of payload.medications||[]) await dbPut('medications', m);
+    for(const r of payload.sudRules||[]) await dbPut('sudRules', r);
+    for(const im of payload.images||[]){ const blob = await dataUrlToBlob(im.dataUrl); await dbPut('images', {id:im.id, blob, createdAt:im.createdAt}); }
+    for(const p of payload.prescriptions||[]) await dbPut('prescriptions', p);
+    if(payload.settings) await saveSettings({...defaultSettings(), ...payload.settings});
+    toast('Geri yükleme tamamlandı.','ok');
+    App.settings = await getSettings();
+    App.medications = await dbGetAll('medications');
+    App.sudRules = await dbGetAll('sudRules');
+    route();
+  }catch(err){
+    console.error(err); toast('Geri yükleme hatası: '+err.message,'err');
+  }
+}
+
+/* =========================================================================
+   14. BAŞLAT
+   ========================================================================= */
+boot();
+</script>
+</body>
+</html>
