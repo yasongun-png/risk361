@@ -1567,10 +1567,12 @@ async function viewMeds(content){
         <input type="text" id="medSearch" placeholder="İlaç adı / etken madde / barkod ara…" style="max-width:300px">
         <span class="spacer"></span>
         <button class="btn primary" id="addMedBtn">+ Yeni İlaç</button>
+        <button class="btn sm" id="medTemplateBtn">📥 Şablon İndir</button>
         <label class="btn sm">İçe Aktar (CSV/XLSX/JSON)<input type="file" id="medImport" accept=".csv,.xlsx,.xls,.json" style="display:none"></label>
         <button class="btn sm" id="medExportXlsx">Excel'e Aktar</button>
         <button class="btn sm" id="medExportJson">JSON'a Aktar</button>
       </div>
+      <p class="small">Tüm ilaçlarınızı tek seferde yüklemek için "Şablon İndir" ile boş Excel şablonunu indirin, kendi ilaç listenizle doldurun ve "İçe Aktar" ile geri yükleyin. Kayıt sayısında teknik bir sınır yoktur.</p>
     </div>
     <div class="card">
       <div class="table-wrap"><table>
@@ -1600,6 +1602,20 @@ async function viewMeds(content){
   document.getElementById('medExportXlsx').onclick = ()=>exportMedsXlsx(list);
   document.getElementById('medExportJson').onclick = ()=>exportJsonFile(list, 'ilac_veritabani.json');
   document.getElementById('medImport').onchange = (e)=>importMedsFile(e.target.files[0]);
+  document.getElementById('medTemplateBtn').onclick = downloadMedTemplate;
+}
+const MED_TEMPLATE_HEADERS = ['İlaç Adı','Etken Madde','Barkod','ATC Kodu','Farmasötik Form','Doz','Ambalaj','Birim','Üretici',
+  'Maksimum Günlük Doz','Min. Kullanım Süresi (gün)','Maks. Kullanım Süresi (gün)','Özel Kontrol Gereksinimleri'];
+function downloadMedTemplate(){
+  const example = {'İlaç Adı':'ÖRNEK İLAÇ 500 MG 20 TB', 'Etken Madde':'Örnek Etken Madde', 'Barkod':'8699000000000',
+    'ATC Kodu':'A00AA00', 'Farmasötik Form':'Tablet', 'Doz':'500 mg', 'Ambalaj':'20 tablet', 'Birim':'mg',
+    'Üretici':'Üretici Firma', 'Maksimum Günlük Doz':'2000', 'Min. Kullanım Süresi (gün)':'5', 'Maks. Kullanım Süresi (gün)':'14',
+    'Özel Kontrol Gereksinimleri':'Gerekirse yazın (boş bırakılabilir)'};
+  const ws = XLSX.utils.json_to_sheet([example], {header:MED_TEMPLATE_HEADERS});
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Ilac_Sablonu');
+  XLSX.writeFile(wb, 'ilac_veritabani_sablon.xlsx');
+  toast('Şablon indirildi. Örnek satırı silip kendi ilaçlarınızla doldurun.');
 }
 window.editMed = async function(id){
   const m = id? await dbGet('medications', id) : {id:uuid(), ilacAdi:'',etkenMadde:'',barkod:'',atcKodu:'',farmasotikForm:'',doz:'',ambalaj:'',birim:'',uretici:'',maksGunlukDoz:'',minKullanimSuresi:'',maksKullanimSuresi:'',ozelKontrol:'',isDemo:false};
@@ -1655,30 +1671,31 @@ async function importMedsFile(file){
       const wb = XLSX.read(buf, {type:'array'});
       rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
     }
-    let count=0;
+    let count=0, skipped=0;
     for(const r of rows){
+      const ilacAdi = pickField(r,['ilacAdi','İlaçAdi','IlacAdi','İlaç Adı','ilac']);
+      if(!ilacAdi){ skipped++; continue; }
       const m = {
         id: uuid(),
-        ilacAdi: r.ilacAdi||r.İlaçAdi||r.IlacAdi||r['İlaç Adı']||'',
-        etkenMadde: r.etkenMadde||r.EtkenMadde||r['Etken Madde']||'',
-        barkod: String(r.barkod||r.Barkod||''),
-        atcKodu: r.atcKodu||r.ATC||r['ATC Kodu']||'',
-        farmasotikForm: r.farmasotikForm||r.Form||r['Farmasötik Form']||'',
-        doz: r.doz||r.Doz||'',
-        ambalaj: r.ambalaj||r.Ambalaj||'',
-        birim: r.birim||r.Birim||'',
-        uretici: r.uretici||r.Uretici||r['Üretici']||'',
-        maksGunlukDoz: r.maksGunlukDoz||r.MaksGunlukDoz||r['Maksimum Günlük Doz']||'',
-        minKullanimSuresi: r.minKullanimSuresi||r.MinKullanimSuresi||'',
-        maksKullanimSuresi: r.maksKullanimSuresi||r.MaksKullanimSuresi||'',
-        ozelKontrol: r.ozelKontrol||r.OzelKontrol||r['Özel Kontrol']||'',
+        ilacAdi,
+        etkenMadde: pickField(r,['etkenMadde','EtkenMadde','Etken Madde']),
+        barkod: String(pickField(r,['barkod','Barkod'])||''),
+        atcKodu: pickField(r,['atcKodu','ATC','ATC Kodu']),
+        farmasotikForm: pickField(r,['farmasotikForm','Form','Farmasötik Form']),
+        doz: pickField(r,['doz','Doz']),
+        ambalaj: pickField(r,['ambalaj','Ambalaj']),
+        birim: pickField(r,['birim','Birim']),
+        uretici: pickField(r,['uretici','Uretici','Üretici']),
+        maksGunlukDoz: pickField(r,['maksGunlukDoz','MaksGunlukDoz','Maksimum Günlük Doz']),
+        minKullanimSuresi: pickField(r,['minKullanimSuresi','MinKullanimSuresi','Min. Kullanım Süresi (gün)','Min Kullanım Süresi']),
+        maksKullanimSuresi: pickField(r,['maksKullanimSuresi','MaksKullanimSuresi','Maks. Kullanım Süresi (gün)','Maks Kullanım Süresi']),
+        ozelKontrol: pickField(r,['ozelKontrol','OzelKontrol','Özel Kontrol','Özel Kontrol Gereksinimleri']),
         isDemo:false,
       };
-      if(!m.ilacAdi) continue;
       await dbPut('medications', m);
       count++;
     }
-    toast(count+' ilaç içe aktarıldı.','ok');
+    toast(count+' ilaç içe aktarıldı'+(skipped?`, ${skipped} satır (ilaç adı eksik) atlandı`:'')+'.','ok');
     route();
   }catch(err){
     console.error(err); toast('İçe aktarma hatası: '+err.message,'err');
@@ -1709,10 +1726,12 @@ async function viewRules(content){
         <input type="text" id="ruleSearch" placeholder="Kural adı / ilaç / etken madde ara…" style="max-width:300px">
         <span class="spacer"></span>
         <button class="btn primary" id="addRuleBtn">+ Yeni Kural</button>
+        <button class="btn sm" id="ruleTemplateBtn">📥 Şablon İndir</button>
         <label class="btn sm">İçe Aktar (Excel/CSV/JSON)<input type="file" id="ruleImport" accept=".csv,.xlsx,.xls,.json" style="display:none"></label>
         <button class="btn sm" id="ruleExportXlsx">Excel'e Aktar</button>
         <button class="btn sm" id="ruleExportJson">JSON Yedekle</button>
       </div>
+      <p class="small">Tüm ilaçlarınızın SUD kurallarını tek seferde girmek için "Şablon İndir" ile boş Excel şablonunu indirin, resmi kaynağınızdaki SUD verileriyle doldurun ve "İçe Aktar" ile yükleyin. Kayıt sayısında teknik bir sınır yoktur; içe aktarılan kurallar kullanılmadan önce yukarıdan doğrulanmalıdır.</p>
     </div>
     <div class="card">
       <div class="table-wrap"><table>
@@ -1742,6 +1761,7 @@ async function viewRules(content){
   document.getElementById('ruleExportXlsx').onclick = ()=>exportRulesXlsx(list);
   document.getElementById('ruleExportJson').onclick = ()=>exportJsonFile(list, 'sud_kurallari_yedek.json');
   document.getElementById('ruleImport').onchange = (e)=>importRulesFile(e.target.files[0]);
+  document.getElementById('ruleTemplateBtn').onclick = downloadRuleTemplate;
   document.getElementById('validateBtn').onclick = async ()=>{
     const note = document.getElementById('validateNote').value.trim();
     if(!note){ toast('Lütfen doğrulayan/kaynak notu girin.','err'); return; }
@@ -1821,6 +1841,37 @@ function exportRulesXlsx(list){
   XLSX.utils.book_append_sheet(wb, ws, 'SUD_Kurallari');
   XLSX.writeFile(wb, 'sud_kurallari.xlsx');
 }
+const RULE_TEMPLATE_HEADERS = ['Kural Adı','İlaç Adı','Etken Madde','ATC Kodu','Kontrol Parametresi (kutuSayisi/kullanimSuresi/gunlukDoz/diger)',
+  'İzin Verilen Kutu Sayısı','İzin Verilen Süre Min (gün)','İzin Verilen Süre Maks (gün)','İzin Verilen Günlük Doz',
+  'Özel Şart','Uyarı Seviyesi (bilgi/uyari/kritik)','Kaynak','Geçerlilik Başlangıç (YYYY-AA-GG)','Geçerlilik Bitiş (YYYY-AA-GG, boş=süresiz)',
+  'Aktif (EVET/HAYIR)','Açıklama'];
+function downloadRuleTemplate(){
+  const example = {
+    'Kural Adı':'Örnek Kural Adı', 'İlaç Adı':'ÖRNEK İLAÇ 500 MG 20 TB', 'Etken Madde':'Örnek Etken Madde', 'ATC Kodu':'A00AA00',
+    'Kontrol Parametresi (kutuSayisi/kullanimSuresi/gunlukDoz/diger)':'kutuSayisi',
+    'İzin Verilen Kutu Sayısı':'2', 'İzin Verilen Süre Min (gün)':'5', 'İzin Verilen Süre Maks (gün)':'14', 'İzin Verilen Günlük Doz':'2000',
+    'Özel Şart':'Gerekirse yazın (boş bırakılabilir)', 'Uyarı Seviyesi (bilgi/uyari/kritik)':'uyari', 'Kaynak':'Resmi kaynağınızı belirtin',
+    'Geçerlilik Başlangıç (YYYY-AA-GG)':'2024-01-01', 'Geçerlilik Bitiş (YYYY-AA-GG, boş=süresiz)':'', 'Aktif (EVET/HAYIR)':'EVET',
+    'Açıklama':'Kuralın kısa açıklaması',
+  };
+  const ws = XLSX.utils.json_to_sheet([example], {header:RULE_TEMPLATE_HEADERS});
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'SUD_Sablonu');
+  XLSX.writeFile(wb, 'sud_kurallari_sablon.xlsx');
+  toast('Şablon indirildi. Örnek satırı silip kendi SUD kurallarınızla doldurun.');
+}
+function normKey(s){ return normTr(s).replace(/\s+/g,''); }
+function pickField(row, aliases){
+  if(!row.__normMap){
+    row.__normMap = {};
+    Object.keys(row).forEach(k=>{ if(k!=='__normMap') row.__normMap[normKey(k)] = row[k]; });
+  }
+  for(const a of aliases){
+    const v = row.__normMap[normKey(a)];
+    if(v!==undefined && v!==null && String(v).trim()!=='') return v;
+  }
+  return '';
+}
 async function importRulesFile(file){
   if(!file) return;
   try{
@@ -1832,25 +1883,34 @@ async function importRulesFile(file){
       const wb = XLSX.read(buf, {type:'array'});
       rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
     }
-    let count=0;
+    let count=0, skipped=0;
     for(const r of rows){
-      if(!r.kuralAdi && !r.KuralAdi) continue;
+      const kuralAdi = pickField(r,['kuralAdi','KuralAdi','Kural Adı','Kural ID','Kural adı']);
+      const ilacAdi = pickField(r,['ilacAdi','İlaç','İlaç Adı','ilac']);
+      if(!kuralAdi || !ilacAdi){ skipped++; continue; }
+      const aktifRaw = pickField(r,['aktif','Aktif (EVET/HAYIR)','Aktif/Pasif','Aktif']);
       const rule = {
-        id: uuid(), groupId: r.groupId||uuid(), version: r.version||1,
-        kuralAdi: r.kuralAdi||r.KuralAdi, aciklama: r.aciklama||'',
-        ilacAdi: r.ilacAdi||r.İlaç||'', etkenMadde: r.etkenMadde||'', atcKodu: r.atcKodu||'',
-        kontrolParametresi: r.kontrolParametresi||'diger', minDeger: r.minDeger||'', maxDeger: r.maxDeger||'',
-        izinVerilenKutuSayisi: r.izinVerilenKutuSayisi||'', izinVerilenSureMinGun: r.izinVerilenSureMinGun||'',
-        izinVerilenSureMaxGun: r.izinVerilenSureMaxGun||'', izinVerilenGunlukDoz: r.izinVerilenGunlukDoz||'',
-        ozelSart: r.ozelSart||'', uyariSeviyesi: r.uyariSeviyesi||'uyari', kaynak: r.kaynak||'İçe aktarıldı',
-        gecerlilikBaslangic: r.gecerlilikBaslangic||'', gecerlilikBitis: r.gecerlilikBitis||'',
-        aktif: r.aktif!==false && r.aktif!=='false', isDemo:false, createdAt:nowIso(), updatedAt:nowIso(),
+        id: uuid(), groupId: pickField(r,['groupId'])||uuid(), version: Number(pickField(r,['version']))||1,
+        kuralAdi, aciklama: pickField(r,['aciklama','Açıklama','Kural açıklaması','Kural Açıklaması']),
+        ilacAdi, etkenMadde: pickField(r,['etkenMadde','Etken Madde']), atcKodu: pickField(r,['atcKodu','ATC Kodu','ATC']),
+        kontrolParametresi: pickField(r,['kontrolParametresi','Kontrol Parametresi (kutuSayisi/kullanimSuresi/gunlukDoz/diger)','Kontrol Parametresi'])||'diger',
+        minDeger: pickField(r,['minDeger','Minimum Değer','Minimum değer']), maxDeger: pickField(r,['maxDeger','Maksimum Değer','Maksimum değer']),
+        izinVerilenKutuSayisi: pickField(r,['izinVerilenKutuSayisi','İzin Verilen Kutu Sayısı']),
+        izinVerilenSureMinGun: pickField(r,['izinVerilenSureMinGun','İzin Verilen Süre Min (gün)','İzin Verilen Kullanım Süresi Min']),
+        izinVerilenSureMaxGun: pickField(r,['izinVerilenSureMaxGun','İzin Verilen Süre Maks (gün)','İzin Verilen Kullanım Süresi Maks']),
+        izinVerilenGunlukDoz: pickField(r,['izinVerilenGunlukDoz','İzin Verilen Günlük Doz']),
+        ozelSart: pickField(r,['ozelSart','Özel Şart']), uyariSeviyesi: pickField(r,['uyariSeviyesi','Uyarı Seviyesi (bilgi/uyari/kritik)','Uyarı Seviyesi'])||'uyari',
+        kaynak: pickField(r,['kaynak','Kaynak'])||'İçe aktarıldı',
+        gecerlilikBaslangic: pickField(r,['gecerlilikBaslangic','Geçerlilik Başlangıç (YYYY-AA-GG)','Geçerlilik Başlangıç Tarihi','Geçerlilik başlangıç tarihi']),
+        gecerlilikBitis: pickField(r,['gecerlilikBitis','Geçerlilik Bitiş (YYYY-AA-GG, boş=süresiz)','Geçerlilik Bitiş Tarihi','Geçerlilik bitiş tarihi']),
+        aktif: !(String(aktifRaw).trim().toLowerCase()==='hayır' || String(aktifRaw).trim().toLowerCase()==='hayir' || aktifRaw===false || aktifRaw==='false'),
+        isDemo:false, createdAt:nowIso(), updatedAt:nowIso(),
       };
       await dbPut('sudRules', rule);
       count++;
     }
     await markRulesChanged();
-    toast(count+' kural içe aktarıldı. Kullanmadan önce lütfen doğrulayın.','ok');
+    toast(count+' kural içe aktarıldı'+(skipped?`, ${skipped} satır (kural/ilaç adı eksik) atlandı`:'')+'. Kullanmadan önce lütfen doğrulayın.','ok');
     route();
   }catch(err){
     console.error(err); toast('İçe aktarma hatası: '+err.message,'err');
