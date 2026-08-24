@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>İSG Hizmet Sözleşmeleri</title>
+<link rel="stylesheet" href="styles.css">
+<script src="vendor/exceljs.min.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <div>
+    <h1>Hizmet Sözleşmeleri</h1>
+    <p>Sicil bazında İSG profesyoneli atama dakikası, yasal süre hesabı ve uygunluk değerlendirmesi.</p>
+  </div>
+  <div class="header-actions">
+    <button id="btnNew" class="btn btn-primary">+ Yeni Sözleşme</button>
+    <button id="btnExport" class="btn btn-export">Excel İndir</button>
+  </div>
+</header>
+
+<div class="meta-bar">
+  <span id="reportMeta">Rapor Tarihi: —   |   Kayıt Sayısı: 0</span>
+</div>
+
+<main>
+  <div class="table-wrap">
+    <table id="reportTable">
+      <thead>
+        <tr>
+          <th>No</th>
+          <th>Sicil / Firma</th>
+          <th>Sicil No</th>
+          <th>İşveren Vekili</th>
+          <th>İSG Uzmanı</th>
+          <th>İşyeri Hekimi</th>
+          <th>DSP</th>
+          <th>Personel / Tehlike</th>
+          <th>Uygunluk Durumu</th>
+          <th>PDF Belgeler</th>
+          <th class="col-actions">İşlem</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <p id="emptyState" class="empty-state" hidden>Henüz kayıt eklenmedi. "Yeni Sözleşme" ile başlayın.</p>
+  </div>
+</main>
+
+<!-- Kayıt Ekle / Düzenle Modal -->
+<div id="modalOverlay" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Yeni Sözleşme</h2>
+      <button id="btnCloseModal" class="btn-icon" aria-label="Kapat">✕</button>
+    </div>
+    <form id="contractForm" class="modal-body">
+      <input type="hidden" id="recordId">
+
+      <fieldset>
+        <legend>Firma Bilgileri</legend>
+        <div class="grid-2">
+          <label>Sicil / Firma Adı
+            <input type="text" id="firmaAdi" required placeholder="Örn. Bagfaş Teknik Müteahitlik">
+          </label>
+          <label>Firma Durumu
+            <select id="firmaDurumu">
+              <option value="Aktif">Aktif</option>
+              <option value="Pasif">Pasif</option>
+            </select>
+          </label>
+          <label>Sicil No
+            <input type="text" id="sicilNo" required placeholder="23312010110503230100988000">
+          </label>
+          <label>Personel Sayısı
+            <input type="number" id="personelSayisi" min="0" required placeholder="89">
+          </label>
+          <label>Tehlike Sınıfı
+            <select id="tehlikeSinifi">
+              <option value="Az Tehlikeli">Az Tehlikeli</option>
+              <option value="Tehlikeli">Tehlikeli</option>
+              <option value="Çok Tehlikeli">Çok Tehlikeli</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>İşveren Vekili</legend>
+        <div class="grid-2">
+          <label>Ad Soyad
+            <input type="text" id="vekilAd" placeholder="İsa CEVRİN">
+          </label>
+          <label>Unvan
+            <input type="text" id="vekilUnvan" placeholder="Bakım ve Onarım Müdürü">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>İSG Uzmanı</legend>
+        <div class="grid-4">
+          <label>Ad Soyad
+            <input type="text" id="isgAd" placeholder="Koray ŞAHBAZ">
+          </label>
+          <label>Sınıf
+            <select id="isgSinif">
+              <option value="">Kapsam Dışı</option>
+              <option value="A Sınıfı">A Sınıfı</option>
+              <option value="B Sınıfı">B Sınıfı</option>
+              <option value="C Sınıfı">C Sınıfı</option>
+            </select>
+          </label>
+          <label>Gerekli (dk/ay)
+            <input type="number" id="isgGerekli" min="0" value="0">
+          </label>
+          <label>Atanan (dk/ay)
+            <input type="number" id="isgAtanan" min="0" value="0">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>İşyeri Hekimi</legend>
+        <div class="grid-3">
+          <label>Ad Soyad
+            <input type="text" id="hekimAd" placeholder="Celal Yavuz">
+          </label>
+          <label>Gerekli (dk/ay)
+            <input type="number" id="hekimGerekli" min="0" value="0">
+          </label>
+          <label>Atanan (dk/ay)
+            <input type="number" id="hekimAtanan" min="0" value="0">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>DSP (Diğer Sağlık Personeli)</legend>
+        <div class="grid-3">
+          <label>Ad Soyad <span class="hint">(boş = Kapsam Dışı)</span>
+            <input type="text" id="dspAd" placeholder="Emrah BOZCA">
+          </label>
+          <label>Gerekli (dk/ay)
+            <input type="number" id="dspGerekli" min="0" value="0">
+          </label>
+          <label>Atanan (dk/ay)
+            <input type="number" id="dspAtanan" min="0" value="0">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>PDF Belgeler</legend>
+        <div class="checkbox-row">
+          <label class="checkbox"><input type="checkbox" id="pdfIsg"> İG Uzmanı PDF</label>
+          <label class="checkbox"><input type="checkbox" id="pdfHekim"> Hekim PDF</label>
+          <label class="checkbox"><input type="checkbox" id="pdfDsp"> DSP PDF</label>
+        </div>
+      </fieldset>
+
+      <div class="modal-footer">
+        <button type="button" id="btnCancel" class="btn btn-secondary">Vazgeç</button>
+        <button type="submit" class="btn btn-primary">Kaydet</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
