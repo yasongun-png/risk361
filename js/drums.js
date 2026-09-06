@@ -65,7 +65,10 @@ function playHiHat(time, accent = false) {
 // which of a bar's 8 eighth-note slots get a kick, snare, and hi-hat hit.
 const RHYTHM_STYLES = {
   pop: { label: "Pop / Rock", kick: [0, 4], snare: [2, 6], hihat: [0, 1, 2, 3, 4, 5, 6, 7] },
-  turku: { label: "Türkü", kick: [0, 3, 6], snare: [4], hihat: [0, 1, 2, 3, 4, 5, 6, 7] },
+  // Steady quarter-note kick on every beat + backbeat snare — fits marching/
+  // anthem-like folk songs (e.g. Çanakkale İçinde) far better than a
+  // syncopated pattern would.
+  mars: { label: "Marş", kick: [0, 2, 4, 6], snare: [2, 6], hihat: [0, 1, 2, 3, 4, 5, 6, 7] },
   ballad: { label: "Yavaş (Balad)", kick: [0], snare: [4], hihat: [0, 2, 4, 6] },
   waltz: { label: "Vals Hissi", kick: [0], snare: [3, 6], hihat: [0, 1, 2, 3, 4, 5, 6, 7] },
 };
