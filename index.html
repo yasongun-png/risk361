@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AkorYolu — Gitar Akorları ve Şarkı Sözleri</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a href="#top" class="logo">🎸 Akor<span>Yolu</span></a>
+      <button id="nav-toggle" class="nav-toggle" aria-label="Menüyü aç/kapat">☰</button>
+      <nav>
+        <ul id="nav-links" class="nav-links">
+          <li><a class="nav-link" href="#top">Anasayfa</a></li>
+          <li><a class="nav-link" href="#kutuphane">Akor Kütüphanesi</a></li>
+          <li><a class="nav-link" href="#sarkilar">Şarkı Sözleri</a></li>
+          <li><a class="nav-link" href="#iletisim">İletişim</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero-inner">
+        <h1>Gitar çalmayı <span>akorlarla</span> öğren</h1>
+        <p>
+          İnteraktif akor kütüphanesi, şarkı sözü akor dizilimleri ve tek tıkla
+          dinleyebileceğin akor sesleriyle gitar yolculuğuna hemen başla.
+        </p>
+        <div class="hero-actions">
+          <a href="#kutuphane" class="btn btn-primary nav-link">Akorları Keşfet</a>
+          <a href="#sarkilar" class="btn btn-secondary nav-link">Şarkı Sözlerine Bak</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="kutuphane" class="section">
+      <div class="container">
+        <h2>Akor Kütüphanesi</h2>
+        <p class="section-lead">Bir akora tıkla, sesini dinle ve parmak pozisyonunu diyagramda incele.</p>
+
+        <input
+          type="search"
+          id="chord-search"
+          class="search-input"
+          placeholder="Akor ara (örn. Am, G7, F...)"
+          aria-label="Akor ara"
+        />
+
+        <div id="chord-grid" class="chord-grid"></div>
+
+        <div id="chord-detail" class="chord-detail" hidden></div>
+      </div>
+    </section>
+
+    <section id="sarkilar" class="section section-alt">
+      <div class="container">
+        <h2>Şarkı Sözleri &amp; Akorlar</h2>
+        <p class="section-lead">
+          Bir şarkı seç, sözlerin üzerindeki akorlara tıklayarak akorun nasıl çalındığını dinle.
+        </p>
+
+        <div class="song-layout">
+          <div id="song-list" class="song-list"></div>
+          <div id="song-sheet" class="song-sheet"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="oynatici" class="section">
+      <div class="container player-info">
+        <h2>İnteraktif Akor Çalar</h2>
+        <p>
+          Sitedeki her akor kutusu ve şarkı sözlerindeki her akor etiketi tıklanabilir bir
+          çalardır. Tarayıcının Web Audio API'ını kullanarak akoru oluşturan tellerin
+          seslerini gerçek zamanlı olarak sentezleriz — hiçbir ses dosyası indirmene gerek yok.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer id="iletisim" class="site-footer">
+    <div class="container footer-inner">
+      <div>
+        <a href="#top" class="logo">🎸 Akor<span>Yolu</span></a>
+        <p>Gitar öğrenenler için akor kütüphanesi ve şarkı sözü platformu.</p>
+      </div>
+      <div>
+        <h4>İletişim</h4>
+        <p>info@akoryolu.example</p>
+      </div>
+    </div>
+    <p class="copyright">&copy; 2026 AkorYolu. Tüm hakları saklıdır.</p>
+  </footer>
+
+  <script src="js/chords.js"></script>
+  <script src="js/fretboard.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/songs.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
