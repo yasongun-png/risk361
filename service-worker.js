@@ -1,4 +1,4 @@
-const CACHE_NAME = "akoryolu-v5";
+const CACHE_NAME = "akoryolu-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -36,19 +36,19 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Network-first: always try to fetch the latest version so a code/data
+// update (like a song's chords or timing) reaches you as soon as you're
+// online, instead of silently serving a stale cached copy indefinitely.
+// Only falls back to the cache when actually offline.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request)
-          .then((response) => {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-            return response;
-          })
-          .catch(() => cached)
-    )
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
