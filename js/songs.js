@@ -10,6 +10,7 @@ const SONGS = [
     artist: "Anonim — İstanbul Türküsü",
     key: "Am",
     bpm: 92,
+    rhythm: "turku",
     sections: [
       {
         label: "Bölüm 1",
@@ -58,6 +59,7 @@ const SONGS = [
     artist: "Anonim — Çanakkale Türküsü",
     key: "Am",
     bpm: 88,
+    rhythm: "turku",
     sections: [
       {
         label: "Bölüm 1",

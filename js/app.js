@@ -92,6 +92,7 @@ function selectSong(index) {
   currentSongIndex = index;
   playbackState.transposeSteps = 0;
   playbackState.bpm = SONGS[index].bpm;
+  playbackState.rhythmStyle = SONGS[index].rhythm || "pop";
   renderSongSheet(index);
 }
 
@@ -137,6 +138,15 @@ function renderSongSheet(index) {
 
       <button id="autoscroll-toggle" class="btn-icon toggle ${playbackState.autoscroll ? "is-active" : ""}"
         aria-pressed="${playbackState.autoscroll}" title="Otomatik kaydırma">⇅</button>
+
+      <select id="rhythm-select" class="control control-select" title="Ritim stili" aria-label="Ritim stili">
+        ${Object.entries(RHYTHM_STYLES)
+          .map(
+            ([key, style]) =>
+              `<option value="${key}" ${playbackState.rhythmStyle === key ? "selected" : ""}>🥁 ${style.label}</option>`
+          )
+          .join("")}
+      </select>
     </div>
 
     <div class="song-sheet-header">
@@ -192,6 +202,10 @@ function attachSongSheetEvents(song) {
     playbackState.autoscroll = !playbackState.autoscroll;
     e.currentTarget.classList.toggle("is-active", playbackState.autoscroll);
     e.currentTarget.setAttribute("aria-pressed", String(playbackState.autoscroll));
+  });
+
+  document.getElementById("rhythm-select").addEventListener("change", (e) => {
+    playbackState.rhythmStyle = e.target.value;
   });
 
   sheet.querySelector('[data-action="transpose-down"]').addEventListener("click", () => adjustTranspose(-1, song));

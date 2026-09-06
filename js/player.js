@@ -105,34 +105,3 @@ function playChordByName(name, transposeSteps = 0) {
   if (chord) playChord(chord);
   return chord;
 }
-
-// A basic "D - DU - UDU" eighth-note strum pattern (one 4-beat bar, 8 slots).
-// null = rest (swing through without striking, like a real strummer would).
-const STRUM_PATTERN = ["D", null, "D", "U", null, "U", "D", "U"];
-
-// Schedules a full bar of rhythm guitar accompaniment for one lyric line.
-// `segments` is the line's [{chord, lyric}, ...]; each of the 8 strum slots
-// is assigned whichever chord is "active" at that point in the bar, so chord
-// changes mid-bar are followed just like a real player would.
-function scheduleLineRhythm(segments, startTime, barDuration, transposeSteps) {
-  const chordSegments = segments.filter((s) => s.chord);
-  if (chordSegments.length === 0) return;
-
-  const eighth = barDuration / STRUM_PATTERN.length;
-  // Let each strum ring a little past its slot, but decay well before the
-  // *next* strum lands — otherwise successive strums smear into a
-  // continuous drone instead of a distinct, audible rhythm.
-  const strumDuration = eighth * 0.8;
-
-  STRUM_PATTERN.forEach((stroke, slot) => {
-    if (!stroke) return;
-    const segIndex = Math.min(
-      chordSegments.length - 1,
-      Math.floor((slot * chordSegments.length) / STRUM_PATTERN.length)
-    );
-    const chord = getTransposedChord(chordSegments[segIndex].chord, transposeSteps);
-    if (!chord) return;
-    const strokeTime = startTime + slot * eighth;
-    strumChord(chord, strokeTime, strumDuration, stroke === "D" ? "down" : "up");
-  });
-}

@@ -7,6 +7,7 @@ const playbackState = {
   transposeSteps: 0,
   bpm: 90,
   autoscroll: true,
+  rhythmStyle: "pop",
 };
 
 function buildPlaylist(song) {
@@ -62,7 +63,9 @@ function startPlayback(song, onStopped) {
 
   let elapsed = 0;
   playlist.forEach((line) => {
-    scheduleLineRhythm(line.chords, audioStartTime + elapsed, lineDuration, playbackState.transposeSteps);
+    // The app keeps the beat like a drummer; the chords stay on screen for
+    // you to actually play on guitar along with it.
+    scheduleDrumBar(audioStartTime + elapsed, lineDuration, playbackState.rhythmStyle);
 
     const lineTimeout = setTimeout(() => highlightLine(line.key), elapsed * 1000);
     playbackState.timeouts.push(lineTimeout);

@@ -448,6 +448,16 @@ a {
   font-weight: 700;
 }
 
+.control-select {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  min-height: 44px;
+}
+
 /* Sections */
 
 .song-section {
