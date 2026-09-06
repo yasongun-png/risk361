@@ -1,37 +1,100 @@
-// Sample song chord sheets. Each line is an array of {chord, lyric} segments;
-// chord is shown above the lyric segment that follows it (chord may be "").
+// Public-domain Turkish folk songs (türkü) — safe to reproduce lyrics in full,
+// unlike current copyrighted commercial songs.
+//
+// Song shape:
+//   { title, artist, key, bpm, sections: [ { label, repeat, lines: [ [ {chord, lyric}, ... ], ... ] } ] }
+// `repeat: true` on a section renders |: :| repeat bars and plays that section's lines twice.
 const SONGS = [
   {
-    title: "Yalnız Çiçek",
-    artist: "Örnek Sanatçı",
+    title: "Üsküdar'a Gider İken (Kâtibim)",
+    artist: "Anonim — İstanbul Türküsü",
     key: "Am",
-    lines: [
-      [{ chord: "Am", lyric: "Bir başına " }, { chord: "F", lyric: "büyüdü bahçede" }],
-      [{ chord: "C", lyric: "Kimse su ver" }, { chord: "G", lyric: "medi ona hiç" }],
-      [{ chord: "Am", lyric: "Yine de aç" }, { chord: "F", lyric: "tı yapraklarını" }],
-      [{ chord: "C", lyric: "Güneşe doğ" }, { chord: "E", lyric: "ru uzandı" }],
+    bpm: 92,
+    sections: [
+      {
+        label: "Bölüm 1",
+        lines: [
+          [
+            { chord: "Am", lyric: "Üsküdar'a gider iken " },
+            { chord: "E7", lyric: "aldı da bir yağmur" },
+          ],
+          [
+            { chord: "Am", lyric: "Kâtibimin setresi " },
+            { chord: "Dm", lyric: "uzun " },
+            { chord: "E7", lyric: "eteği çamur" },
+          ],
+        ],
+      },
+      {
+        label: "Bölüm 2",
+        lines: [
+          [
+            { chord: "Am", lyric: "Kâtip uykudan uyanmış " },
+            { chord: "E7", lyric: "gözleri mahmur" },
+          ],
+          [
+            { chord: "Am", lyric: "Kâtip benim ben kâtibin " },
+            { chord: "Dm", lyric: "el ne " },
+            { chord: "E7", lyric: "karışır" },
+          ],
+        ],
+      },
+      {
+        label: "Nakarat",
+        repeat: true,
+        lines: [
+          [
+            { chord: "Am", lyric: "Kâtibime kolalı da " },
+            { chord: "Dm", lyric: "gömlek " },
+            { chord: "E7", lyric: "ne güzel " },
+            { chord: "Am", lyric: "yakışır" },
+          ],
+        ],
+      },
     ],
   },
   {
-    title: "Sahil Yolu",
-    artist: "Örnek Sanatçı",
-    key: "G",
-    lines: [
-      [{ chord: "G", lyric: "Kumsalda yürü" }, { chord: "D", lyric: "rüz elini tutup" }],
-      [{ chord: "Em", lyric: "Deniz fısılda" }, { chord: "C", lyric: "r bize bir şarkı" }],
-      [{ chord: "G", lyric: "Martılar uçar" }, { chord: "D", lyric: " gökyüzünde özgür" }],
-      [{ chord: "C", lyric: "Bu an hep böyle " }, { chord: "D", lyric: "kalsın istedim" }],
-    ],
-  },
-  {
-    title: "Şehrin Işıkları",
-    artist: "Örnek Sanatçı",
-    key: "C",
-    lines: [
-      [{ chord: "C", lyric: "Şehrin ışıkları " }, { chord: "G", lyric: "yanar gece boyu" }],
-      [{ chord: "Am", lyric: "Sokaklar sessiz" }, { chord: "F", lyric: ", yalnız bir gitar sesi" }],
-      [{ chord: "C", lyric: "Pencereden bakar" }, { chord: "G", lyric: "ım uzaklara doğru" }],
-      [{ chord: "Am", lyric: "Belki bir gün ge" }, { chord: "F", lyric: "ri dönerim buraya" }],
+    title: "Çanakkale İçinde",
+    artist: "Anonim — Çanakkale Türküsü",
+    key: "Am",
+    bpm: 88,
+    sections: [
+      {
+        label: "Bölüm 1",
+        lines: [
+          [
+            { chord: "Am", lyric: "Çanakkale içinde " },
+            { chord: "Dm", lyric: "aynalı çarşı" },
+          ],
+          [
+            { chord: "E7", lyric: "Ana ben gidiyom " },
+            { chord: "Am", lyric: "düşmana karşı" },
+          ],
+        ],
+      },
+      {
+        label: "Nakarat",
+        repeat: true,
+        lines: [
+          [
+            { chord: "Dm", lyric: "Of gençliğim " },
+            { chord: "E7", lyric: "eyvah" },
+          ],
+        ],
+      },
+      {
+        label: "Bölüm 2",
+        lines: [
+          [
+            { chord: "Am", lyric: "Çanakkale içinde " },
+            { chord: "Dm", lyric: "bir dolu testi" },
+          ],
+          [
+            { chord: "E7", lyric: "Analar babalar " },
+            { chord: "Am", lyric: "ümidi kesti" },
+          ],
+        ],
+      },
     ],
   },
 ];

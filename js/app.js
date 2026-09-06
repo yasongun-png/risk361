@@ -1,3 +1,5 @@
+let currentSongIndex = 0;
+
 document.addEventListener("DOMContentLoaded", () => {
   renderChordLibrary(CHORD_LIBRARY);
   renderSongList();
@@ -78,11 +80,19 @@ function renderSongList() {
       <span class="song-title">${song.title}</span>
       <span class="song-meta">${song.artist} · ${song.key} akoru</span>
     `;
-    item.addEventListener("click", () => renderSongSheet(index));
+    item.addEventListener("click", () => selectSong(index));
     list.appendChild(item);
   });
 
-  renderSongSheet(0);
+  selectSong(0);
+}
+
+function selectSong(index) {
+  stopPlayback(updatePlayButton);
+  currentSongIndex = index;
+  playbackState.transposeSteps = 0;
+  playbackState.bpm = SONGS[index].bpm;
+  renderSongSheet(index);
 }
 
 function renderSongSheet(index) {
@@ -93,41 +103,119 @@ function renderSongSheet(index) {
     el.classList.toggle("active", i === index);
   });
 
-  const linesHtml = song.lines
-    .map((line) => {
-      const segmentsHtml = line
-        .map(
-          (seg) => `
-          <span class="lyric-segment">
-            ${
-              seg.chord
-                ? `<button class="chord-tag" data-chord="${seg.chord}">${seg.chord}</button>`
-                : `<span class="chord-tag chord-tag-empty">&nbsp;</span>`
-            }
-            <span class="lyric-word">${seg.lyric}</span>
-          </span>`
-        )
+  const sectionsHtml = song.sections
+    .map((section, sIdx) => {
+      const linesHtml = section.lines
+        .map((line, lIdx) => renderLine(line, sIdx, lIdx))
         .join("");
-      return `<div class="lyric-line">${segmentsHtml}</div>`;
+      return `
+        <div class="song-section ${section.repeat ? "song-section-repeat" : ""}">
+          ${section.label ? `<h4 class="section-label">${section.label}</h4>` : ""}
+          <div class="section-lines">${linesHtml}</div>
+        </div>
+      `;
     })
     .join("");
 
   sheet.innerHTML = `
+    <div class="song-toolbar">
+      <button id="play-btn" class="btn-icon btn-play" aria-label="Şarkıyı oynat">▶</button>
+
+      <div class="control" title="Transpoze">
+        <span class="control-label">T</span>
+        <button class="control-btn" data-action="transpose-down" aria-label="Yarım ton aşağı">−</button>
+        <span id="transpose-value" class="control-value">${playbackState.transposeSteps}</span>
+        <button class="control-btn" data-action="transpose-up" aria-label="Yarım ton yukarı">+</button>
+      </div>
+
+      <div class="control" title="Tempo (BPM)">
+        <span class="control-label">♩=</span>
+        <button class="control-btn" data-action="tempo-down" aria-label="Tempoyu azalt">−</button>
+        <span id="tempo-value" class="control-value">${playbackState.bpm}</span>
+        <button class="control-btn" data-action="tempo-up" aria-label="Tempoyu artır">+</button>
+      </div>
+
+      <button id="autoscroll-toggle" class="btn-icon toggle ${playbackState.autoscroll ? "is-active" : ""}"
+        aria-pressed="${playbackState.autoscroll}" title="Otomatik kaydırma">⇅</button>
+    </div>
+
     <div class="song-sheet-header">
       <h3>${song.title}</h3>
-      <p>${song.artist} · Kapo yok · ${song.key} akoru</p>
+      <p>${song.artist} · ${song.key} akoru</p>
     </div>
-    <div class="song-lyrics">${linesHtml}</div>
+    <div class="song-lyrics">${sectionsHtml}</div>
   `;
+
+  attachSongSheetEvents(song);
+}
+
+function renderLine(line, sectionIndex, lineIndex) {
+  const segmentsHtml = line
+    .map((seg) => {
+      const displayChord = seg.chord ? transposeChordName(seg.chord, playbackState.transposeSteps) : "";
+      return `
+        <span class="lyric-segment">
+          ${
+            seg.chord
+              ? `<button class="chord-tag" data-chord="${seg.chord}">${displayChord}</button>`
+              : `<span class="chord-tag chord-tag-empty">&nbsp;</span>`
+          }
+          <span class="lyric-word">${seg.lyric}</span>
+        </span>`;
+    })
+    .join("");
+  return `<div class="lyric-line" data-line-key="${sectionIndex}-${lineIndex}">${segmentsHtml}</div>`;
+}
+
+function attachSongSheetEvents(song) {
+  const sheet = document.getElementById("song-sheet");
 
   sheet.querySelectorAll(".chord-tag[data-chord]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const chord = playChordByName(btn.dataset.chord);
+      const chord = playChordByName(btn.dataset.chord, playbackState.transposeSteps);
       btn.classList.add("is-playing");
       setTimeout(() => btn.classList.remove("is-playing"), 400);
       if (chord) showChordDetail(chord);
     });
   });
+
+  document.getElementById("play-btn").addEventListener("click", () => {
+    if (playbackState.playing) {
+      stopPlayback(updatePlayButton);
+    } else {
+      startPlayback(song, updatePlayButton);
+      updatePlayButton();
+    }
+  });
+
+  document.getElementById("autoscroll-toggle").addEventListener("click", (e) => {
+    playbackState.autoscroll = !playbackState.autoscroll;
+    e.currentTarget.classList.toggle("is-active", playbackState.autoscroll);
+    e.currentTarget.setAttribute("aria-pressed", String(playbackState.autoscroll));
+  });
+
+  sheet.querySelector('[data-action="transpose-down"]').addEventListener("click", () => adjustTranspose(-1, song));
+  sheet.querySelector('[data-action="transpose-up"]').addEventListener("click", () => adjustTranspose(1, song));
+  sheet.querySelector('[data-action="tempo-down"]').addEventListener("click", () => adjustTempo(-4));
+  sheet.querySelector('[data-action="tempo-up"]').addEventListener("click", () => adjustTempo(4));
+}
+
+function adjustTranspose(delta, song) {
+  playbackState.transposeSteps = Math.max(-6, Math.min(6, playbackState.transposeSteps + delta));
+  document.getElementById("transpose-value").textContent = playbackState.transposeSteps;
+  renderSongSheet(currentSongIndex);
+}
+
+function adjustTempo(delta) {
+  playbackState.bpm = Math.max(40, Math.min(200, playbackState.bpm + delta));
+  document.getElementById("tempo-value").textContent = playbackState.bpm;
+}
+
+function updatePlayButton() {
+  const btn = document.getElementById("play-btn");
+  if (!btn) return;
+  btn.textContent = playbackState.playing ? "■" : "▶";
+  btn.classList.toggle("is-active", playbackState.playing);
 }
 
 // ---------- Nav ----------
