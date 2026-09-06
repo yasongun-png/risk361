@@ -1,5 +1,6 @@
-// Drives "Oynat" (play-through) for a song: schedules chord audio in time,
-// highlights the current line, and auto-scrolls to keep it in view.
+// Drives "Oynat" (play-through) for a song: schedules rhythm-guitar strum
+// accompaniment in time, highlights the current line, and auto-scrolls to
+// keep it in view.
 const playbackState = {
   playing: false,
   timeouts: [],
@@ -38,6 +39,7 @@ function highlightLine(key) {
 
 function stopPlayback(onStopped) {
   clearScheduledTimeouts();
+  stopAllScheduledSound();
   playbackState.playing = false;
   document.querySelectorAll(".lyric-line.active-line").forEach((el) => el.classList.remove("active-line"));
   if (onStopped) onStopped();
@@ -52,20 +54,18 @@ function startPlayback(song, onStopped) {
   const beatsPerLine = 4;
   const lineDuration = secondsPerBeat * beatsPerLine;
 
+  // Web Audio's own clock schedules the actual strums sample-accurately;
+  // setTimeout (imprecise, but fine for the UI) only drives the on-screen
+  // line highlight/auto-scroll in sync with that same timeline.
+  const ctx = getAudioContext();
+  const audioStartTime = ctx.currentTime + 0.15;
+
   let elapsed = 0;
   playlist.forEach((line) => {
-    const lineStartMs = elapsed * 1000;
-    const lineTimeout = setTimeout(() => highlightLine(line.key), lineStartMs);
-    playbackState.timeouts.push(lineTimeout);
+    scheduleLineRhythm(line.chords, audioStartTime + elapsed, lineDuration, playbackState.transposeSteps);
 
-    const segGap = lineDuration / Math.max(line.chords.length, 1);
-    line.chords.forEach((seg, i) => {
-      if (!seg.chord) return;
-      const chordTimeout = setTimeout(() => {
-        playChordByName(seg.chord, playbackState.transposeSteps);
-      }, lineStartMs + i * segGap * 1000);
-      playbackState.timeouts.push(chordTimeout);
-    });
+    const lineTimeout = setTimeout(() => highlightLine(line.key), elapsed * 1000);
+    playbackState.timeouts.push(lineTimeout);
 
     elapsed += lineDuration;
   });
