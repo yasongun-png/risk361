@@ -1,4 +1,4 @@
-const CACHE_NAME = "akoryolu-v1";
+const CACHE_NAME = "akoryolu-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -11,6 +11,8 @@ const APP_SHELL = [
   "./js/app.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/icon-192-maskable.png",
+  "./icons/icon-512-maskable.png",
   "./icons/apple-touch-icon.png",
 ];
 
