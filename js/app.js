@@ -177,7 +177,7 @@ function renderSongSheet(index) {
 }
 
 function renderLine(line, sectionIndex, lineIndex) {
-  const segmentsHtml = line
+  const segmentsHtml = line.segments
     .map((seg, segIndex) => {
       const displayChord = seg.chord ? transposeChordName(seg.chord, playbackState.transposeSteps) : "";
       return `

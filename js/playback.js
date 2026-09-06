@@ -16,7 +16,7 @@ function buildPlaylist(song) {
     const repeatCount = section.repeat ? 2 : 1;
     for (let r = 0; r < repeatCount; r++) {
       section.lines.forEach((line, lIdx) => {
-        playlist.push({ key: `${sIdx}-${lIdx}`, chords: line });
+        playlist.push({ key: `${sIdx}-${lIdx}`, segments: line.segments, bars: line.bars || 1 });
       });
     }
   });
@@ -62,8 +62,7 @@ function startPlayback(song, onStopped) {
 
   const playlist = buildPlaylist(song);
   const secondsPerBeat = 60 / playbackState.bpm;
-  const beatsPerLine = 4;
-  const lineDuration = secondsPerBeat * beatsPerLine;
+  const barDuration = secondsPerBeat * 4;
 
   // Web Audio's own clock schedules the actual strums sample-accurately;
   // setTimeout (imprecise, but fine for the UI) only drives the on-screen
@@ -73,14 +72,19 @@ function startPlayback(song, onStopped) {
 
   let elapsed = 0;
   playlist.forEach((line) => {
-    // The app keeps the beat like a drummer; the chords stay on screen for
-    // you to actually play on guitar along with it.
-    scheduleDrumBar(audioStartTime + elapsed, lineDuration, playbackState.rhythmStyle);
+    // Each line spans its own number of 4-beat bars (some lyric lines take
+    // longer to sing than others) — repeat the chosen rhythm-style's bar
+    // pattern that many times so tempo stays correct while the line lasts
+    // as long as it actually needs to.
+    const lineDuration = barDuration * line.bars;
+    for (let b = 0; b < line.bars; b++) {
+      scheduleDrumBar(audioStartTime + elapsed + b * barDuration, barDuration, playbackState.rhythmStyle);
+    }
 
     const lineTimeout = setTimeout(() => highlightLine(line.key), elapsed * 1000);
     playbackState.timeouts.push(lineTimeout);
 
-    const chordSegments = line.chords
+    const chordSegments = line.segments
       .map((seg, segIndex) => ({ ...seg, segIndex }))
       .filter((seg) => seg.chord);
     const segGap = lineDuration / Math.max(chordSegments.length, 1);
