@@ -141,6 +141,43 @@ a {
   flex-wrap: wrap;
 }
 
+.hero-songs {
+  margin-top: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hero-songs-label {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.hero-song-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.hero-song-chip {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.hero-song-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
 .btn {
   display: inline-block;
   padding: 12px 26px;
@@ -531,6 +568,13 @@ a {
 .chord-tag.is-playing {
   color: var(--color-primary);
   text-decoration: underline;
+}
+
+.chord-tag.active-chord {
+  color: #fff;
+  background: var(--color-primary);
+  border-radius: 6px;
+  text-decoration: none;
 }
 
 .chord-tag-empty {

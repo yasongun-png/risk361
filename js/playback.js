@@ -38,11 +38,21 @@ function highlightLine(key) {
   }
 }
 
+// Highlights exactly which chord (by its position in the line) should be
+// playing right now, so you can see the chord change happen in real time
+// instead of just knowing which line you're on.
+function highlightChord(lineKey, segIndex) {
+  document.querySelectorAll(".chord-tag.active-chord").forEach((el) => el.classList.remove("active-chord"));
+  const el = document.querySelector(`[data-line-key="${lineKey}"] .chord-tag[data-seg-index="${segIndex}"]`);
+  if (el) el.classList.add("active-chord");
+}
+
 function stopPlayback(onStopped) {
   clearScheduledTimeouts();
   stopAllScheduledSound();
   playbackState.playing = false;
   document.querySelectorAll(".lyric-line.active-line").forEach((el) => el.classList.remove("active-line"));
+  document.querySelectorAll(".chord-tag.active-chord").forEach((el) => el.classList.remove("active-chord"));
   if (onStopped) onStopped();
 }
 
@@ -69,6 +79,18 @@ function startPlayback(song, onStopped) {
 
     const lineTimeout = setTimeout(() => highlightLine(line.key), elapsed * 1000);
     playbackState.timeouts.push(lineTimeout);
+
+    const chordSegments = line.chords
+      .map((seg, segIndex) => ({ ...seg, segIndex }))
+      .filter((seg) => seg.chord);
+    const segGap = lineDuration / Math.max(chordSegments.length, 1);
+    chordSegments.forEach((seg, i) => {
+      const chordTimeout = setTimeout(
+        () => highlightChord(line.key, seg.segIndex),
+        (elapsed + i * segGap) * 1000
+      );
+      playbackState.timeouts.push(chordTimeout);
+    });
 
     elapsed += lineDuration;
   });

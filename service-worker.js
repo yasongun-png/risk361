@@ -1,4 +1,4 @@
-const CACHE_NAME = "akoryolu-v4";
+const CACHE_NAME = "akoryolu-v5";
 const APP_SHELL = [
   "./",
   "./index.html",

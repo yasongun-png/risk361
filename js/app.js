@@ -2,10 +2,27 @@ let currentSongIndex = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   renderChordLibrary(CHORD_LIBRARY);
+  renderHeroSongList();
   renderSongList();
   setupSearch();
   setupNav();
 });
+
+// ---------- Hero quick song list ----------
+
+function renderHeroSongList() {
+  const list = document.getElementById("hero-song-list");
+  list.innerHTML = SONGS.map(
+    (song, index) => `<button class="hero-song-chip" data-song-index="${index}">${song.title}</button>`
+  ).join("");
+
+  list.querySelectorAll(".hero-song-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      selectSong(Number(chip.dataset.songIndex));
+      document.querySelector("#sarkilar").scrollIntoView({ behavior: "smooth" });
+    });
+  });
+}
 
 // ---------- Chord library ----------
 
@@ -161,13 +178,13 @@ function renderSongSheet(index) {
 
 function renderLine(line, sectionIndex, lineIndex) {
   const segmentsHtml = line
-    .map((seg) => {
+    .map((seg, segIndex) => {
       const displayChord = seg.chord ? transposeChordName(seg.chord, playbackState.transposeSteps) : "";
       return `
         <span class="lyric-segment">
           ${
             seg.chord
-              ? `<button class="chord-tag" data-chord="${seg.chord}">${displayChord}</button>`
+              ? `<button class="chord-tag" data-chord="${seg.chord}" data-seg-index="${segIndex}">${displayChord}</button>`
               : `<span class="chord-tag chord-tag-empty">&nbsp;</span>`
           }
           <span class="lyric-word">${seg.lyric}</span>
