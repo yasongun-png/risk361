@@ -28,19 +28,19 @@ function playNote(freq, startTime, duration) {
   osc.stop(startTime + duration + 0.05);
 }
 
-function playChord(chord) {
+function playChord(chord, duration = 1.4) {
   const ctx = getAudioContext();
   const freqs = chordFrequencies(chord);
   const strumGap = 0.035;
   const now = ctx.currentTime;
 
   freqs.forEach((freq, i) => {
-    playNote(freq, now + i * strumGap, 1.4);
+    playNote(freq, now + i * strumGap, duration);
   });
 }
 
-function playChordByName(name) {
-  const chord = findChord(name);
+function playChordByName(name, transposeSteps = 0) {
+  const chord = getTransposedChord(name, transposeSteps);
   if (chord) playChord(chord);
   return chord;
 }
