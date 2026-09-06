@@ -12,7 +12,7 @@ const SONGS = [
     title: "Üsküdar'a Gider İken (Kâtibim)",
     artist: "Anonim — İstanbul Türküsü",
     key: "Am",
-    bpm: 92,
+    bpm: 96, // verified against songbpm.com's listing for this song (Am, 4/4)
     rhythm: "pop",
     sections: [
       {
@@ -78,6 +78,9 @@ const SONGS = [
     key: "Am",
     bpm: 88,
     rhythm: "mars",
+    // Chord progression verified against real published chord sheets
+    // (akorlar.com / repertuarim.com): Am - C - D - C - G - D - Am,
+    // rather than a guessed one.
     sections: [
       {
         label: "Bölüm 1",
@@ -86,14 +89,14 @@ const SONGS = [
             bars: 1,
             segments: [
               { chord: "Am", lyric: "Çanakkale içinde " },
-              { chord: "Dm", lyric: "aynalı çarşı" },
+              { chord: "C", lyric: "aynalı çarşı" },
             ],
           },
           {
             bars: 1,
             segments: [
-              { chord: "E7", lyric: "Ana ben gidiyom " },
-              { chord: "Am", lyric: "düşmana karşı" },
+              { chord: "D", lyric: "Ana ben gidiyom " },
+              { chord: "C", lyric: "düşmana karşı" },
             ],
           },
         ],
@@ -105,8 +108,8 @@ const SONGS = [
           {
             bars: 1,
             segments: [
-              { chord: "Dm", lyric: "Of gençliğim " },
-              { chord: "E7", lyric: "eyvah" },
+              { chord: "G", lyric: "Of gençliğim " },
+              { chord: "D", lyric: "eyvah" },
             ],
           },
         ],
@@ -118,13 +121,13 @@ const SONGS = [
             bars: 1,
             segments: [
               { chord: "Am", lyric: "Çanakkale içinde " },
-              { chord: "Dm", lyric: "bir dolu testi" },
+              { chord: "C", lyric: "bir dolu testi" },
             ],
           },
           {
             bars: 1,
             segments: [
-              { chord: "E7", lyric: "Analar babalar " },
+              { chord: "D", lyric: "Analar babalar " },
               { chord: "Am", lyric: "ümidi kesti" },
             ],
           },
