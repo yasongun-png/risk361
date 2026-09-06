@@ -17,12 +17,22 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   line-height: 1.55;
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  touch-action: manipulation;
 }
 
 .container {
@@ -48,6 +58,7 @@ a {
   z-index: 20;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+  padding-top: env(safe-area-inset-top);
 }
 
 .header-inner {
@@ -55,6 +66,8 @@ a {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
 }
 
 .logo {
@@ -387,9 +400,11 @@ a {
   color: var(--color-accent);
   font-weight: 700;
   cursor: pointer;
-  padding: 0 2px;
+  padding: 6px 4px;
+  margin: -6px -4px;
   font-family: inherit;
   font-size: 0.9rem;
+  min-height: 32px;
 }
 
 .chord-tag:hover,
@@ -423,6 +438,7 @@ a {
   background: #241a11;
   color: #f2e9dc;
   padding: 44px 0 20px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
 }
 
 .footer-inner {
@@ -452,6 +468,8 @@ a {
 @media (max-width: 720px) {
   .nav-toggle {
     display: block;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .nav-links {
@@ -462,6 +480,7 @@ a {
     background: var(--color-surface);
     flex-direction: column;
     padding: 16px 20px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
     display: none;
     border-bottom: 1px solid var(--color-border);
   }
@@ -470,7 +489,50 @@ a {
     display: flex;
   }
 
+  .nav-links .nav-link {
+    display: block;
+    padding: 10px 0;
+  }
+
   .song-layout {
     grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding: 56px 0 48px;
+  }
+
+  .section {
+    padding: 48px 0;
+  }
+
+  .chord-grid {
+    grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+    gap: 12px;
+  }
+}
+
+/* Tablet: keep nav visible but tighten spacing a touch */
+@media (min-width: 721px) and (max-width: 1024px) {
+  .chord-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
+/* Touch devices: enlarge tap targets */
+@media (pointer: coarse) {
+  .chord-card {
+    min-height: 44px;
+  }
+
+  .song-list-item {
+    min-height: 48px;
+  }
+
+  .btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }
