@@ -1,4 +1,4 @@
-const CACHE_NAME = "akoryolu-v6";
+const CACHE_NAME = "akoryolu-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,6 +10,7 @@ const APP_SHELL = [
   "./js/drums.js",
   "./js/songs.js",
   "./js/playback.js",
+  "./js/songbuilder.js",
   "./js/app.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

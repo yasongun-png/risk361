@@ -1,11 +1,23 @@
 let currentSongIndex = 0;
 
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[c]));
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  loadUserSongs();
   renderChordLibrary(CHORD_LIBRARY);
   renderHeroSongList();
   renderSongList();
   setupSearch();
   setupNav();
+  setupSongBuilder();
 });
 
 // ---------- Hero quick song list ----------
@@ -13,7 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
 function renderHeroSongList() {
   const list = document.getElementById("hero-song-list");
   list.innerHTML = SONGS.map(
-    (song, index) => `<button class="hero-song-chip" data-song-index="${index}">${song.title}</button>`
+    (song, index) =>
+      `<button class="hero-song-chip" data-song-index="${index}">${escapeHtml(song.title)}</button>`
   ).join("");
 
   list.querySelectorAll(".hero-song-chip").forEach((chip) => {
@@ -94,8 +107,8 @@ function renderSongList() {
     const item = document.createElement("button");
     item.className = "song-list-item";
     item.innerHTML = `
-      <span class="song-title">${song.title}</span>
-      <span class="song-meta">${song.artist} · ${song.key} akoru</span>
+      <span class="song-title">${escapeHtml(song.title)}</span>
+      <span class="song-meta">${escapeHtml(song.artist)} · ${escapeHtml(song.key)} akoru</span>
     `;
     item.addEventListener("click", () => selectSong(index));
     list.appendChild(item);
@@ -167,8 +180,15 @@ function renderSongSheet(index) {
     </div>
 
     <div class="song-sheet-header">
-      <h3>${song.title}</h3>
-      <p>${song.artist} · ${song.key} akoru</p>
+      <h3>${escapeHtml(song.title)}</h3>
+      <p>
+        ${escapeHtml(song.artist)} · ${escapeHtml(song.key)} akoru
+        ${
+          song.youtube && /^https?:\/\//i.test(song.youtube)
+            ? `· <a href="${escapeHtml(song.youtube)}" target="_blank" rel="noopener">YouTube'da dinle ↗</a>`
+            : ""
+        }
+      </p>
     </div>
     <div class="song-lyrics">${sectionsHtml}</div>
   `;
@@ -184,10 +204,10 @@ function renderLine(line, sectionIndex, lineIndex) {
         <span class="lyric-segment">
           ${
             seg.chord
-              ? `<button class="chord-tag" data-chord="${seg.chord}" data-seg-index="${segIndex}">${displayChord}</button>`
+              ? `<button class="chord-tag" data-chord="${escapeHtml(seg.chord)}" data-seg-index="${segIndex}">${escapeHtml(displayChord)}</button>`
               : `<span class="chord-tag chord-tag-empty">&nbsp;</span>`
           }
-          <span class="lyric-word">${seg.lyric}</span>
+          <span class="lyric-word">${escapeHtml(seg.lyric)}</span>
         </span>`;
     })
     .join("");
